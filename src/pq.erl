@@ -1,8 +1,12 @@
 -module(pq).
+-include("pq.hrl").
 
 -export([
    start_link/2, lease/1, lease/2, release/2
 ]).
+-ifdef(DEBUG).
+-export([profile/0]).
+-endif.
 
 %%
 %%
@@ -28,3 +32,22 @@ lease(Q, Timeout) ->
 
 release(Q, Pid) ->
    pq_leader:release(Q, Pid).
+
+
+-ifdef(DEBUG).
+%%
+profile() ->
+   {ok, _} = pq:start_link(q, [
+      {worker, fun() -> timer:sleep(1000) end}
+   ]),
+   fprof:trace([start, {procs, [erlang:whereis(q)]}]),
+   %% apply workload
+   lists:foreach(
+      fun(_)-> pq:release(q, erlang:element(2, pq:lease(q))) end,
+      lists:seq(1, 10000)
+   ),
+   %% get data
+   fprof:trace([stop]),
+   fprof:profile(),
+   fprof:analyse().
+-endif.

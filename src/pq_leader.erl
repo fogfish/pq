@@ -12,8 +12,7 @@
    worker,        % worker factory
    capacity =  0, % queue capacity
    length   = 10, % queue length
-   qidle,         % idle worker queue
-   qbusy,         % busy worker queue
+   q,             % worker queue
    wait,          % client queue waiting for worker
 
    reusable = false,
@@ -48,17 +47,16 @@ init([], #srv{worker=undefined}) ->
    {stop, badarg};
 
 init([], S) ->
-   {ok, init_client_q(S)}.
+   {ok, init_empty_q(S)}.
 
 terminate(_, _) ->
    ok.
 
 %%
-init_client_q(#srv{}=S) ->
+init_empty_q(#srv{}=S) ->
    S#srv{
-      qidle  = queue:new(),
-      qbusy  = [],
-      wait   = queue:new()
+      q    = queue:new(),
+      wait = queue:new()
    }.
 
 
@@ -104,11 +102,12 @@ handle_call({lease, Timeout}, Tx0, S0) ->
 
 handle_call({release, Pid}, Tx, S0) ->
    gen_server:reply(Tx, ok),
-   S1 = case is_process_alive(Pid) of
-      true  -> release_worker(Pid, S0);
-      false -> recovery_worker(Pid, S0)
-   end,
-   {noreply, S1};
+   {noreply, release_worker(Pid, S0)};
+   % S1 = case is_process_alive(Pid) of
+   %    true  -> release_worker(Pid, S0);
+   %    false -> recovery_worker(Pid, S0)
+   % end,
+   % {noreply, S1};
 
 handle_call(_, _, S) ->
    {noreply, S}.
@@ -123,11 +122,12 @@ handle_cast(_, S) ->
 handle_info({init_worker_sup, Sup}, S) ->
    {noreply, init_worker_q(init_worker_sup(Sup, S))};
 
-handle_info({'DOWN', _, _, Pid, _}, S) ->
-   {noreply, recovery_worker(Pid, S)};
+handle_info({'DOWN', _, _, _Pid, _}, #srv{capacity=C}=S) ->
+   % one of our workers is dead
+   % do nothing to filter it our but decrease capacity
+   {noreply, S#srv{capacity=C - 1}};
 
-handle_info(M, S) ->
-   io:format("~p ~n", [M]),
+handle_info(_, S) ->
    {noreply, S}.
 
 %%
@@ -151,56 +151,28 @@ init_worker_sup(Sup, #srv{worker=Worker}=S) ->
    }),
    S#srv{worker = Pid}.
 
-%%
-init_worker_q(#srv{length=Len, ondemand=false}=S0) ->
+%% init queue of workers
+init_worker_q(#srv{length=Len,  ondemand=false}=S0) ->
    lists:foldl(fun(_, S) -> init_worker(S) end, S0, lists:seq(1, Len));
 
-init_worker_q(#srv{length=_,   ondemand=true}=S0) ->
+init_worker_q(#srv{length=_Len, ondemand=true}=S0) ->
    S0.
 
-
 %% 
-init_worker(#srv{worker=Sup, capacity=C, qidle=Q}=S) ->
+init_worker(#srv{worker=Sup, capacity=C, q=Q}=S) ->
    {ok, Pid} = supervisor:start_child(Sup, []),
    erlang:monitor(process, Pid),
    S#srv{
-      qidle    = queue:in(Pid, Q),
+      q        = queue:in(Pid, Q),
       capacity = C + 1
    }.
 
 %%
-free_idle_worker(Pid, #srv{capacity=C, qidle=Q}=S) ->
-   S#srv{
-      qidle    = queue:filter(fun(X) -> X =/= Pid end, Q),
-      capacity = C - 1
-   }.
-
-%%
-free_busy_worker(Pid, #srv{capacity=C, qbusy=Q}=S) ->
-   S#srv{
-      qbusy    = lists:filter(fun(X) -> X=/= Pid end, Q), 
-      capacity = C - 1
-   }.
-
-%%
-maybe_free_busy_worker(Pid, #srv{qbusy=Q}=S) ->
-   case lists:member(Pid, Q) of
-      true  -> free_busy_worker(Pid, S);
-      false -> maybe_free_idle_worker(Pid, S)
-   end.
-
-maybe_free_idle_worker(Pid, #srv{qidle=Q}=S) ->
-   case queue:member(Pid, Q) of
-      false -> S;
-      true  -> free_idle_worker(Pid, S)
-   end.
-
-
 %% lease worker
 lease_worker(undefined, S) ->
    S;
 
-lease_worker(Tx, #srv{qidle=Q}=S) ->
+lease_worker(Tx, #srv{q=Q}=S) ->
    lease_worker(queue:out(Q), Tx, S).
 
 lease_worker({empty, _}, Tx, #srv{capacity=C, length=L}=S)
@@ -211,32 +183,44 @@ lease_worker({empty, _}, _Tx, #srv{capacity=C, length=L})
  when C =:= L ->
    false;
 
-lease_worker({{value, Pid}, Q}, Tx, #srv{qbusy=Busy}=S) ->
+lease_worker({{value, Pid}, Q}, Tx, #srv{}=S) ->
+   case is_process_alive(Pid) of
+      true  -> allocate_worker(Pid, Tx, S#srv{q=Q});
+      false -> lease_worker(queue:out(Q), Tx, S)
+   end.
+
+allocate_worker(Pid, Tx, #srv{reusable=false, capacity=C}=S) ->
    gen_server:reply(Tx, {ok, Pid}),
-   S#srv{
-      qidle = Q,
-      qbusy = [Pid | Busy]
-   }.
+   % chose worker is not re-usable
+   % no-flow control strategy, create its replacement immediately
+   init_worker(S#srv{capacity=C - 1});
+
+allocate_worker(Pid, Tx, #srv{reusable=true}=S) ->
+   gen_server:reply(Tx, {ok, Pid}),
+   S.
 
 %%
-release_worker(Pid, #srv{qidle=Q, reusable=true}=S0) ->
-   {Tx, S1} = peek_lease_request(
-      S0#srv{qidle = queue:in(Pid, Q)}
-   ),
-   lease_worker(Tx, S1);
-
+%% release used worker
 release_worker(Pid, #srv{reusable=false}=S0) ->
    erlang:exit(Pid, shutdown),
-   S0.
+   {Tx, S1} = peek_lease_request(S0),
+   case lease_worker(Tx, S1) of
+      false -> S0;  % worker cannot be leased (rollback one state)
+      S2    -> S2   % worker is leased
+   end;
 
-recovery_worker(Pid, #srv{}=S0) ->
-   {Tx, S1} = peek_lease_request(
-      init_worker(
-         maybe_free_busy_worker(Pid, S0)
-      )
-   ),
-   lease_worker(Tx, S1).
+release_worker(Pid, #srv{q=Q, reusable=true}=S0) ->
+   S1 = case is_process_alive(Pid) of
+      true   -> S0#srv{q = queue:in(Pid, Q)};
+      false  -> S0
+   end,
+   {Tx, S2} = peek_lease_request(S1),
+   case lease_worker(Tx, S2) of
+      false -> S1;  % worker cannot be leased (rollback one state)
+      S3    -> S3   % worker is leased
+   end.
 
+%%
 %% 
 push_lease_request(Tx, infinity, #srv{wait=Q}=S) ->
    S#srv{

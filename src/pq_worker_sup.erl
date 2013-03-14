@@ -25,6 +25,13 @@ worker(Mod)
       transient, 60000, worker, dynamic
    };
 
+worker({M, F, A}) ->
+   {
+      worker, 
+      {M, F, A},
+      transient, 60000, worker, dynamic
+   };
+
 worker(Fun)
  when is_function(Fun) ->
    {

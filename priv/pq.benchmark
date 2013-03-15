@@ -1,0 +1,21 @@
+{code_paths, ["./ebin"]}.
+{log_level,    info}.
+{report_interval, 1}.
+{driver,       pq_benchmark}.
+
+
+%%
+%% workload
+{mode,            max}.
+{duration,          1}.
+{concurrent,       10}.
+
+{operations, [
+    {lease,   100000}
+   ,{suspend,      1}
+]}.
+
+{pq_length,      1000}. % length of queue
+{pq_lifecyle,   60000}. % life cycle of test process 
+%{pq_throttle,    true}.
+%{pq_reusable,    true}.

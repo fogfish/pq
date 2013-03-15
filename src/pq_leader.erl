@@ -3,7 +3,9 @@
 
 -export([
    %% api
-   start_link/3, lease/2, release/2,
+   start_link/3, 
+   lease/2, release/2,
+   suspend/1, resume/1,
    % gen_server
    init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3
 ]).
@@ -16,6 +18,7 @@
    q,             % worker queue
    wait,          % client queue waiting for worker
 
+   inactive = false,  % queue is suspended
    reusable = false,  % workers are re-usable, release operation do not evict them
    ondemand = false,  % workers are spawned on-demand
    throttle = false   % throttle is off, lease operation do to recover consumed capacity
@@ -85,6 +88,16 @@ lease(Q, Timeout) ->
 release(Q, Pid) ->
    gen_server:call(Q, {release, Pid}).
 
+%%
+%%
+suspend(Q) ->
+   gen_server:call(Q, suspend).
+
+%%
+%%
+resume(Q) ->
+   gen_server:call(Q, resume).
+
 %%%------------------------------------------------------------------
 %%%
 %%% gen_server
@@ -93,7 +106,7 @@ release(Q, Pid) ->
 
 %%
 %%
-handle_call({lease, Timeout}, Tx0, S0) ->
+handle_call({lease, Timeout}, Tx0, #srv{inactive=false}=S0) ->
    S1        = push_lease_request(Tx0, Timeout, S0),
    {Tx1, S2} = peek_lease_request(S1),
    case lease_worker(Tx1, S2) of
@@ -101,14 +114,28 @@ handle_call({lease, Timeout}, Tx0, S0) ->
       S3    -> {noreply, S3}
    end;
 
-handle_call({release, Pid}, Tx, S0) ->
+handle_call({lease, Timeout}, Tx0, #srv{inactive=true}=S0) ->
+   {noreply, push_lease_request(Tx0, Timeout, S0)};
+
+handle_call({release, Pid}, Tx, #srv{inactive=false}=S0) ->
    gen_server:reply(Tx, ok),
    {noreply, release_worker(Pid, S0)};
-   % S1 = case is_process_alive(Pid) of
-   %    true  -> release_worker(Pid, S0);
-   %    false -> recovery_worker(Pid, S0)
-   % end,
-   % {noreply, S1};
+
+handle_call({release, Pid}, Tx, #srv{inactive=true}=S0) ->
+   gen_server:reply(Tx, ok),
+   {noreply, free_worker(Pid, S0)};
+
+handle_call(suspend, _, #srv{inactive=true}=S) ->
+   {reply, ok, S};
+
+handle_call(suspend, _, #srv{inactive=false}=S) ->
+   {reply, ok, free_worker_q(S#srv{inactive=true})};
+
+handle_call(resume, _, #srv{inactive=true}=S) ->
+   {reply, ok, init_worker_q(S#srv{inactive=false})};
+
+handle_call(resume, _, #srv{inactive=false}=S) ->
+   {reply, ok, S};
 
 handle_call(_, _, S) ->
    {noreply, S}.
@@ -162,6 +189,23 @@ init_worker(#srv{worker=Sup, capacity=C, q=Q}=S) ->
    S#srv{
       q        = queue:in(Pid, Q),
       capacity = C + 1
+   }.
+
+free_worker_q(#srv{q=Q}=S) ->
+   free_worker_q(queue:out(Q), S).
+
+free_worker_q({empty, Q}, S) ->
+   S#srv{
+      q = Q
+   };
+
+free_worker_q({{value, Pid}, Q}, S) ->
+   free_worker_q(queue:out(Q), free_worker(Pid, S)).
+
+free_worker(Pid, #srv{capacity=C}=S) ->
+   erlang:exit(Pid, shutdown),
+   S#srv{
+      capacity = C - 1
    }.
 
 %%

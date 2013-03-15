@@ -42,8 +42,27 @@ config_worker(Opts) ->
 %%
 %%
 run(lease, _KeyGen, _ValGen, S) ->
-   {ok, Pid} = pq:lease(benq, 1000),
-   ok = pq:release(benq, Pid),
-   {ok, S}.
+   try
+      {ok, Pid} = pq:lease(benq, 20000),
+      ok = pq:release(benq, Pid),
+      {ok, S}
+   catch _:_Reason ->
+      %io:format("pq crash: ~p ~p~n", [Reason, erlang:get_stacktrace()]),
+      {error, crash, S}
+   end;
+
+run(suspend, _KeyGen, _ValGen, S) ->
+   try
+      ok = pq:suspend(benq),
+      timer:sleep(10000),
+      ok = pq:resume(benq),
+      {ok, S}
+   catch _:_Reason ->
+      %io:format("pq crash: ~p ~p~n", [Reason, erlang:get_stacktrace()]),
+      {error, crash, S}
+   end.      
+
+
+
 
 

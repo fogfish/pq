@@ -151,12 +151,12 @@ handle_info(timeout, #srv{sup=Sup}=S) ->
    {ok, Pid} = pq_q_sup:worker(Sup),
    {noreply, init_worker_q(S#srv{worker=Pid})};
 
-handle_info({'DOWN', _, _, _Pid, _}, #srv{capacity=C, ondemand=false}=S) ->
+handle_info({'DOWN', _, _, _Pid, _}, #srv{capacity=C, ondemand=false, inactive=false}=S) ->
    % one of our workers is dead
    % do nothing to filter it our but decrease capacity
    {noreply, init_worker(S#srv{capacity=C - 1})};
 
-handle_info({'DOWN', _, _, _Pid, _}, #srv{capacity=C, ondemand=true}=S) ->
+handle_info({'DOWN', _, _, _Pid, _}, #srv{capacity=C, ondemand=true, inactive=false}=S) ->
    % one of our workers is dead
    % do nothing to filter it our but decrease capacity
    {noreply, S#srv{capacity=C - 1}};

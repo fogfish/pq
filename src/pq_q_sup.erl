@@ -2,16 +2,15 @@
 -behaviour(supervisor).
 
 -export([
-   start_link/3, init/1, leader/1, worker/1
+   start_link/2, init/1, leader/1, worker/1
 ]).
 
 %%
 %%
-start_link(Owner, Q, Opts) ->
-   supervisor:start_link(?MODULE, [Owner, Q, Opts]).
+start_link(Q, Opts) ->
+   supervisor:start_link(?MODULE, [Q, Opts]).
    
-init([Owner, Q, Opts]) ->   
-   erlang:link(Owner),
+init([Q, Opts]) ->   
    {ok,
       {
          {one_for_all, 4, 1800},

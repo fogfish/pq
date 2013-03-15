@@ -15,14 +15,8 @@ start_link() ->
 init([]) ->   
    {ok,
       {
-         {simple_one_for_one, 4, 1800},
-         [q()]
+         {one_for_one, 4, 1800},
+         []
       }
    }.
 
-q() ->
-   {
-      q,
-      {pq_q_sup, start_link, []},
-      transient, 60000, supervisor, dynamic
-   }.

@@ -2,7 +2,7 @@
 -include("pq.hrl").
 
 -export([
-   start_link/1, start_link/2, 
+   start_link/1, start_link/2, queue/1,
    lease/1, lease/2, release/2,
    suspend/1, resume/1
 ]).
@@ -16,11 +16,16 @@
 -spec(start_link/2 :: (atom(), list()) -> {ok, pid()} | {error, any()}).
 
 start_link(Opts) ->
-   {ok, Sup} = supervisor:start_child(pq_sup, [self(), undefined, Opts]),
-   pq_q_sup:leader(Sup).
-
+   pq_q_sup:start_link(undefined, Opts).
+   
 start_link(Q, Opts) ->
-   {ok, Sup} = supervisor:start_child(pq_sup, [self(), Q, Opts]),
+   pq_q_sup:start_link(Q, Opts).
+
+%%
+%%
+-spec(queue/1 :: (pid()) -> pid()).
+
+queue(Sup) ->
    pq_q_sup:leader(Sup).
 
 %%

@@ -122,7 +122,12 @@ handle_cast(_, S) ->
 handle_info({init_worker_sup, Sup}, S) ->
    {noreply, init_worker_q(init_worker_sup(Sup, S))};
 
-handle_info({'DOWN', _, _, _Pid, _}, #srv{capacity=C}=S) ->
+handle_info({'DOWN', _, _, _Pid, _}, #srv{capacity=C, ondemand=false}=S) ->
+   % one of our workers is dead
+   % do nothing to filter it our but decrease capacity
+   {noreply, init_worker(S#srv{capacity=C - 1})};
+
+handle_info({'DOWN', _, _, _Pid, _}, #srv{capacity=C, ondemand=true}=S) ->
    % one of our workers is dead
    % do nothing to filter it our but decrease capacity
    {noreply, S#srv{capacity=C - 1}};

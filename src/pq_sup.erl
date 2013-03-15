@@ -1,3 +1,5 @@
+%% @description
+%%    manage client queues
 -module(pq_sup).
 -behaviour(supervisor).
 
@@ -13,7 +15,14 @@ start_link() ->
 init([]) ->   
    {ok,
       {
-         {one_for_one, 4, 1800},
-         []
+         {simple_one_for_one, 4, 1800},
+         [q()]
       }
+   }.
+
+q() ->
+   {
+      q,
+      {pq_q_sup, start_link, []},
+      transient, 60000, supervisor, dynamic
    }.

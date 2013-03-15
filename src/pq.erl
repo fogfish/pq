@@ -2,7 +2,7 @@
 -include("pq.hrl").
 
 -export([
-   start_link/2, lease/1, lease/2, release/2
+   start_link/1, start_link/2, lease/1, lease/2, release/2
 ]).
 -ifdef(DEBUG).
 -export([profile/0]).
@@ -10,10 +10,16 @@
 
 %%
 %%
+-spec(start_link/1 :: (list()) -> {ok, pid()} | {error, any()}).
 -spec(start_link/2 :: (atom(), list()) -> {ok, pid()} | {error, any()}).
 
+start_link(Opts) ->
+   {ok, Sup} = supervisor:start_child(pq_sup, [self(), undefined, Opts]),
+   pq_q_sup:leader(Sup).
+
 start_link(Q, Opts) ->
-   pq_q_sup:start_link(Q, Opts).
+   {ok, Sup} = supervisor:start_child(pq_sup, [self(), Q, Opts]),
+   pq_q_sup:leader(Sup).
 
 %%
 %%
@@ -37,6 +43,7 @@ release(Q, Pid) ->
 -ifdef(DEBUG).
 %%
 profile() ->
+   application:start(pq),
    {ok, _} = pq:start_link(q, [
       {worker, fun() -> timer:sleep(1000) end}
    ]),
@@ -44,7 +51,7 @@ profile() ->
    %% apply workload
    lists:foreach(
       fun(_)-> pq:release(q, erlang:element(2, pq:lease(q))) end,
-      lists:seq(1, 10000)
+      lists:seq(1, 1000)
    ),
    %% get data
    fprof:trace([stop]),

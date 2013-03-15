@@ -9,27 +9,28 @@
 ]).
 
 -record(srv, {
+   sup,           % parent supervisor
    worker,        % worker factory
    capacity =  0, % queue capacity
    length   = 10, % queue length
    q,             % worker queue
    wait,          % client queue waiting for worker
 
-   reusable = false,
-   ondemand = false
+   reusable = false,  % workers are re-usable, release operation do not evict them
+   ondemand = false,  % workers are spawned on-demand
+   throttle = false   % throttle is off, lease operation do to recover consumed capacity
 }).
 
 %%
 %%
+start_link(Sup, undefined, Opts) ->
+   gen_server:start_link(?MODULE, [Sup, Opts], []);
+
 start_link(Sup, Q, Opts) ->
    gen_server:start_link({local, Q}, ?MODULE, [Sup, Opts], []).
 
 init([Sup, Opts]) ->
-   self() ! {init_worker_sup, Sup},
-   init(Opts, #srv{}).
-
-init([{worker, X} | T], S) ->
-   init(T, S#srv{worker=X});
+   init(Opts, #srv{sup=Sup}).
 
 init([{length, X} | T], S) when is_integer(X) ->
    init(T, S#srv{length=X});
@@ -40,14 +41,14 @@ init([reusable | T], S) ->
 init([ondemand | T], S) ->
    init(T, S#srv{ondemand=true});
 
+init([throttle | T], S) ->
+   init(T, S#srv{throttle=true});
+
 init([_ | T], S) ->
    init(T, S);
 
-init([], #srv{worker=undefined}) ->
-   {stop, badarg};
-
 init([], S) ->
-   {ok, init_empty_q(S)}.
+   {ok, init_empty_q(S), 0}.
 
 terminate(_, _) ->
    ok.
@@ -119,8 +120,9 @@ handle_cast(_, S) ->
 
 %%
 %%
-handle_info({init_worker_sup, Sup}, S) ->
-   {noreply, init_worker_q(init_worker_sup(Sup, S))};
+handle_info(timeout, #srv{sup=Sup}=S) ->
+   {ok, Pid} = pq_q_sup:worker(Sup),
+   {noreply, init_worker_q(S#srv{worker=Pid})};
 
 handle_info({'DOWN', _, _, _Pid, _}, #srv{capacity=C, ondemand=false}=S) ->
    % one of our workers is dead
@@ -147,15 +149,6 @@ code_change(_Vsn, S, _Extra) ->
 %%%
 %%%------------------------------------------------------------------
 
-%% 
-init_worker_sup(Sup, #srv{worker=Worker}=S) ->
-   {ok, Pid} = supervisor:start_child(Sup, {
-      worker,
-      {pq_worker_sup, start_link, [Worker]},
-      permanent, 30000, supervisor, dynamic
-   }),
-   S#srv{worker = Pid}.
-
 %% init queue of workers
 init_worker_q(#srv{length=Len,  ondemand=false}=S0) ->
    lists:foldl(fun(_, S) -> init_worker(S) end, S0, lists:seq(1, Len));
@@ -163,7 +156,6 @@ init_worker_q(#srv{length=Len,  ondemand=false}=S0) ->
 init_worker_q(#srv{length=_Len, ondemand=true}=S0) ->
    S0.
 
-%% 
 init_worker(#srv{worker=Sup, capacity=C, q=Q}=S) ->
    {ok, Pid} = supervisor:start_child(Sup, []),
    erlang:monitor(process, Pid),
@@ -194,11 +186,13 @@ lease_worker({{value, Pid}, Q}, Tx, #srv{}=S) ->
       false -> lease_worker(queue:out(Q), Tx, S)
    end.
 
-allocate_worker(Pid, Tx, #srv{reusable=false, capacity=C}=S) ->
+allocate_worker(Pid, Tx, #srv{reusable=false, throttle=true, capacity=C}=S) ->
    gen_server:reply(Tx, {ok, Pid}),
-   % chose worker is not re-usable
-   % no-flow control strategy, create its replacement immediately
    init_worker(S#srv{capacity=C - 1});
+
+allocate_worker(Pid, Tx, #srv{reusable=false, throttle=false, capacity=C}=S) ->
+   gen_server:reply(Tx, {ok, Pid}),
+   S#srv{capacity=C - 1};
 
 allocate_worker(Pid, Tx, #srv{reusable=true}=S) ->
    gen_server:reply(Tx, {ok, Pid}),

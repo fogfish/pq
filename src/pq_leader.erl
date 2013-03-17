@@ -245,7 +245,7 @@ allocate_worker(Pid, Tx, #srv{reusable=true}=S) ->
 %%
 %% release used worker
 release_worker(Pid, #srv{reusable=false}=S0) ->
-   erlang:exit(Pid, shutdown),
+   % do nothing to kill process, workers should be self destructible
    {Tx, S1} = peek_lease_request(S0),
    case lease_worker(Tx, S1) of
       false -> S0;  % worker cannot be leased (rollback one state)
@@ -255,7 +255,7 @@ release_worker(Pid, #srv{reusable=false}=S0) ->
 release_worker(Pid, #srv{q=Q, reusable=true}=S0) ->
    S1 = case is_process_alive(Pid) of
       true   -> S0#srv{q = queue:in(Pid, Q)};
-      false  -> S0
+      false  -> S0  % no needs to reduce capacity, 'DOWN' signal does it
    end,
    {Tx, S2} = peek_lease_request(S1),
    case lease_worker(Tx, S2) of

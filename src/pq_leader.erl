@@ -12,6 +12,7 @@
 
 -record(srv, {
    sup,           % parent supervisor
+   identity,      % queue identity
    worker,        % worker factory
    capacity =  0, % queue capacity
    length   = 10, % queue length
@@ -46,6 +47,12 @@ init([ondemand | T], S) ->
 
 init([throttle | T], S) ->
    init(T, S#srv{throttle=true});
+
+init([{register, Fun} | T], S)
+ when is_function(Fun) ->
+   % register function allow to implement various process identity schema
+   % not only erlang native 
+   init(T, S#srv{identity=Fun()});
 
 init([_ | T], S) ->
    init(T, S);
@@ -244,7 +251,7 @@ allocate_worker(Pid, Tx, #srv{reusable=true}=S) ->
 
 %%
 %% release used worker
-release_worker(Pid, #srv{reusable=false}=S0) ->
+release_worker(_Pid, #srv{reusable=false}=S0) ->
    % do nothing to kill process, workers should be self destructible
    {Tx, S1} = peek_lease_request(S0),
    case lease_worker(Tx, S1) of

@@ -33,7 +33,7 @@ worker(Sup) ->
 leader(Q, Opts) ->
    {
       leader,
-      {pq_leader, start_link, [self(), Q, Opts]},
+      {pq_leader_async, start_link, [self(), Q, Opts]},
       permanent, 60000, worker, dynamic
    }.
 

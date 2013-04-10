@@ -16,6 +16,6 @@
 ]}.
 
 {pq_length,      1000}. % length of queue
-{pq_lifecyle,   60000}. % life cycle of test process 
+{pq_lifecycle,    100}. % life cycle of test process 
 %{pq_throttle,    true}.
 %{pq_reusable,    true}.

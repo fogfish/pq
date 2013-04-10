@@ -30,9 +30,9 @@ config_reusable(Opts) ->
    end.
 
 config_throttle(Opts) ->
-   case basho_bench_config:get(pq_reusable, false) of
+   case basho_bench_config:get(pq_throttle, false) of
       false -> Opts;
-      true  -> [reusable | Opts]
+      true  -> [throttle | Opts]
    end.
 
 config_worker(Opts) ->

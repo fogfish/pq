@@ -30,8 +30,8 @@ queue(Sup) ->
 
 %%
 %% lease worker
--spec(lease/1 :: (atom()) -> {ok, pid()} | {errpr, any()}).
--spec(lease/2 :: (atom(), integer() | infinity) -> {ok, pid()} | {errpr, any()}).
+-spec(lease/1 :: (atom()) -> {ok, pid()} | {error, any()}).
+-spec(lease/2 :: (atom(), integer() | infinity) -> {ok, pid()} | {error, any()}).
 
 lease(Q) ->
    lease(Q, infinity).

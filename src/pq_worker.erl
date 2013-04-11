@@ -1,6 +1,7 @@
 %% @description
-%%   default pq worker
+%%   abstract pq worker
 -module(pq_worker).
+
 -export([
    start_link/1, init/2
 ]).

@@ -1,3 +1,5 @@
+%% @description
+%%   pq leader, allocates requests among workers 
 -module(pq_leader).
 -behaviour(gen_server).
 

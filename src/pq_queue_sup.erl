@@ -1,28 +1,31 @@
--module(pq_q_sup).
+-module(pq_queue_sup).
 -behaviour(supervisor).
 
 -export([
-   start_link/2, init/1, leader/1, worker/1
+   start_link/2, init/1, 
+   leader/1, worker/1
 ]).
 
 %%
 %%
-start_link(Q, Opts) ->
-   supervisor:start_link(?MODULE, [Q, Opts]).
+start_link(Name, Opts) ->
+   supervisor:start_link(?MODULE, [Name, Opts]).
    
-init([Q, Opts]) ->   
+init([Name, Opts]) ->   
    {ok,
       {
          {one_for_all, 4, 1800},
-         [worker(Q, Opts), leader(Q, Opts)]
+         [sup_worker(Name, Opts), sup_leader(Name, Opts)]
       }
    }.
 
+%%
 %%
 leader(Sup) ->
    {_, Pid, _, _} = lists:keyfind(leader, 1, supervisor:which_children(Sup)),
    {ok, Pid}.
 
+%%
 %%
 worker(Sup) ->
    {_, Pid, _, _} = lists:keyfind(worker, 1, supervisor:which_children(Sup)),
@@ -30,15 +33,15 @@ worker(Sup) ->
 
 
 %%
-leader(Q, Opts) ->
+sup_leader(Name, Opts) ->
    {
       leader,
-      {pq_leader_async, start_link, [self(), Q, Opts]},
+      {pq_leader, start_link, [self(), Name, Opts]},
       permanent, 60000, worker, dynamic
    }.
 
 %%
-worker(_, Opts) ->
+sup_worker(_, Opts) ->
    {worker, Worker} = lists:keyfind(worker, 1, Opts),
    {
       worker,

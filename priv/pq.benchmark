@@ -1,4 +1,4 @@
-{code_paths, ["./ebin"]}.
+{code_paths, ["./ebin", "./deps/feta"]}.
 {log_level,    info}.
 {report_interval, 1}.
 {driver,       pq_benchmark}.
@@ -8,14 +8,15 @@
 %% workload
 {mode,            max}.
 {duration,          1}.
-{concurrent,       10}.
+{concurrent,      300}.
 
 {operations, [
     {lease,   100000}
-   ,{suspend,      1}
+   %,{suspend,      1}
 ]}.
 
-{pq_length,      1000}. % length of queue
-{pq_lifecycle,    100}. % life cycle of test process 
-%{pq_throttle,    true}.
-%{pq_reusable,    true}.
+{pq_type,  disposable}. % worker use pattern
+%{pq_type,    reusable}. % worker use pattern
+{pq_capacity,     100}. % length of queue
+{pq_lifecycle,   1000}. % life cycle of test process (ms)
+%{pq_ondemand,    true}.

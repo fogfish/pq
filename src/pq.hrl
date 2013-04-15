@@ -1,6 +1,6 @@
 
 
--define(VERBOSE, true).
+%-define(VERBOSE, true).
 
 -ifdef(VERBOSE).
 -define(DEBUG(Str, Args), error_logger:error_msg(Str, Args)).

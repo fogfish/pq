@@ -15,35 +15,24 @@ new(_Id) ->
    end.
 
 config() ->
-   config_reusable(
-      config_throttle(
-         config_worker(
-            [{length, basho_bench_config:get(pq_length, 10)}]
-         )
-      )
-   ).
+   maybe_opt_config([
+      {type,     basho_bench_config:get(pq_type, disposable)},
+      {capacity, basho_bench_config:get(pq_capacity, 10)},
+      {worker,   fun worker/0}
+   ]).
 
-config_reusable(Opts) ->
-   case basho_bench_config:get(pq_reusable, false) of
-      false -> Opts;
-      true  -> [reusable | Opts]
+maybe_opt_config(Cfg) ->
+   case basho_bench_config:get(pq_ondemand, false) of
+      false -> Cfg;
+      true  -> [ondemand | Cfg]
    end.
-
-config_throttle(Opts) ->
-   case basho_bench_config:get(pq_throttle, false) of
-      false -> Opts;
-      true  -> [throttle | Opts]
-   end.
-
-config_worker(Opts) ->
-   T = basho_bench_config:get(pq_lifecycle, 10000),
-   [{worker, fun() -> timer:sleep(T) end} | Opts].
 
 %%
 %%
 run(lease, _KeyGen, _ValGen, S) ->
    try
       {ok, Pid} = pq:lease(benq, 20000),
+      ping(Pid, ping),
       ok = pq:release(benq, Pid),
       {ok, S}
    catch _:_Reason ->
@@ -62,7 +51,33 @@ run(suspend, _KeyGen, _ValGen, S) ->
       {error, crash, S}
    end.      
 
+%%
+%% artificial queue worker
+worker() ->
+   Rnd = random:seed(erlang:now()),
+   Lc  = basho_bench_config:get(pq_lifecycle, 100),
+   worker_loop(basho_bench_config:get(pq_type, disposable), Lc).
 
+worker_loop(disposable, Lc) ->
+   receive
+      {Pid,  Msg} ->
+         timer:sleep(random:uniform(Lc)),
+         Pid ! Msg
+   end;
 
+worker_loop(reusable, Lc) ->
+   receive
+      {Pid, exit} ->
+         Pid ! exit;
+      {Pid,  Msg} ->
+         timer:sleep(random:uniform(Lc)),
+         Pid ! Msg,
+         worker_loop(reusable, Lc)
+   end.
 
-
+%%
+ping(Pid, Msg) ->
+   Pid ! {self(), Msg},
+   receive
+      Msg -> ok
+   end.

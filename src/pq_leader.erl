@@ -137,6 +137,7 @@ handle_call(resume, _, #leader{inactive=false}=S) ->
    {reply, ok, S};
 
 handle_call(resume, _, #leader{ondemand=false}=S) ->
+   ?DEBUG("pq ~p resume", [self()]),
    Workers = [init_worker(S#leader.factory) || _ <- lists:seq(1, S#leader.capacity)],
    {reply, ok,
       deq_worker(
@@ -185,30 +186,27 @@ handle_info({'DOWN', _, _, _Pid, _Reason}, #leader{inactive=true}=S) ->
    {noreply, S};
 
 handle_info({'DOWN', _, _, Pid, Reason}, #leader{ondemand=false}=S) ->
+   % loss of worker is (release empty), we have to decrease capacity
+   % to ensure that new worker is restarted  
    ?DEBUG("pq ~p die worker: ~p, reason ~p", [self(), Pid, Reason]),
-   {noreply, deq_worker(enq_worker(S))};
+   {noreply, 
+      deq_worker(
+         enq_worker(
+            dec_capacity(S)
+         )
+      )
+   };
 
 handle_info({'DOWN', _, _, Pid, Reason}, S) ->
    ?DEBUG("pq ~p die worker: ~p, reason ~p", [self(), Pid, Reason]),
    {noreply, 
       deq_worker(
-         S#leader{
-            capacity = S#leader.capacity + 1
-         }
+         inc_capacity(S)
       )
    };
 
-%    % one of our workers is dead
-%    % do nothing to filter it our but decrease capacity
-%    {noreply, init_worker(S#srv{capacity=C - 1})};
-
-% handle_info({'DOWN', _, _, _Pid, _}, #srv{capacity=C, ondemand=true, inactive=false}=S) ->
-%    % one of our workers is dead
-%    % do nothing to filter it our but decrease capacity
-%    {noreply, S#srv{capacity=C - 1}};
-
-handle_info(M, S) ->
-   error_logger:error_msg("-- msg --> ~p", [M]),
+handle_info(_, S) ->
+   %error_logger:error_msg("-- msg --> ~p", [M]),
    {noreply, S}.
 
 %%
@@ -246,10 +244,11 @@ enq_worker(S) ->
 
 enq_worker(Worker, S) ->
    ?DEBUG("pq ~p (c=~b) enq worker: ~p", [self(), S#leader.capacity, Worker]),
-   S#leader{
-      wq       = q:enq(Worker, S#leader.wq),
-      capacity = S#leader.capacity + 1
-   }.
+   inc_capacity(
+      S#leader{
+         wq = q:enq(Worker, S#leader.wq)
+      }
+   ).
 
 %%
 %%
@@ -272,13 +271,31 @@ deq_worker(#leader{wq={}}=S) ->
 deq_worker(S) ->
    {{_, Req}, Lq} = q:deq(S#leader.lq),
    {Worker,   Wq} = q:deq(S#leader.wq),
-   gen_server:reply(Req, {ok, Worker}),
-   ?DEBUG("pq ~p (c=~b) deq worker: ~p to ~p", [self(), S#leader.capacity, Worker, Req]),
+   case is_process_alive(Worker) of
+      false ->
+         deq_worker(S#leader{wq=Wq});
+      true  ->
+         gen_server:reply(Req, {ok, Worker}),
+         ?DEBUG("pq ~p (c=~b) deq worker: ~p to ~p", [self(), S#leader.capacity, Worker, Req]),
+         S#leader{
+            lq       = Lq,
+            wq       = Wq,
+            capacity = S#leader.capacity - 1
+         }
+   end.
+
+%%
+%% increase / decrease capacity 
+inc_capacity(#leader{}=S) ->
    S#leader{
-      lq       = Lq,
-      wq       = Wq,
-      capacity = S#leader.capacity - 1
-   }.
+      capacity = erlang:min(S#leader.capacity + 1, S#leader.size)
+   }.   
+
+dec_capacity(#leader{}=S) ->
+   S#leader{
+      capacity = erlang:max(S#leader.capacity - 1, 0)
+   }.   
+
 
 %%
 %%

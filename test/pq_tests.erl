@@ -141,7 +141,7 @@ q_ooc(Q) ->
    spawn(fun() -> lease_release(Q, 1000) end),
    timer:sleep(100),
    lease_release(Q, 10),
-   erlang:yield().
+   timer:sleep(1000). %% ensure that queue is empty
 
 q_lease_timeout(Q) ->
    error_logger:error_msg("~n~n[~p] lease timeout", [Q]),
@@ -149,14 +149,14 @@ q_lease_timeout(Q) ->
    spawn(fun() -> lease_release(Q, 1000) end),
    timer:sleep(100),
    {'EXIT', _} = (catch lease_release(Q, 10, 100)),
-   erlang:yield().
+   timer:sleep(1000). %% ensure that queue is empty
 
 q_suspend_resume(Q) ->
    error_logger:error_msg("~n~n[~p] suspend/resume", [Q]),
    spawn(fun() -> suspend_resume(Q, 1000) end),
    timer:sleep(100),
    lease_release(Q, 10),
-   erlang:yield().
+   timer:sleep(1000). %% ensure that queue is empty
 
 
 

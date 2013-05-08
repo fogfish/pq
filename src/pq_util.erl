@@ -20,5 +20,8 @@ deadline(Timeout)     ->
 
 %%
 %% check is queued entity is expired
-expired({Deadline, _}) ->
-   usec() >= Deadline.
+expired({lease, Deadline, _}) ->
+   usec() >= Deadline;
+
+expired({plib, {Pid, _},  _}) ->
+   not is_process_alive(Pid).

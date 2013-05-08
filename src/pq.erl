@@ -11,8 +11,11 @@
 -export([
    start_link/1, start_link/2, queue/1, 
    lease/1, lease/2, release/2,
-   suspend/1, resume/1
+   suspend/1, resume/1, touch/1, touch/2
 ]).
+
+-type(pq() :: atom() | pid()).
+
 % -ifdef(DEBUG).
 % -export([profile/0]).
 % -endif.
@@ -37,37 +40,52 @@ queue(Sup) ->
 
 %%
 %% lease worker
--spec(lease/1 :: (atom() | pid()) -> {ok, pid()} | {error, any()}).
--spec(lease/2 :: (atom() | pid(), integer() | infinity) -> {ok, pid()} | {error, any()}).
+-spec(lease/1 :: (pq()) -> {ok, pid()} | {error, any()}).
+-spec(lease/2 :: (pq(), integer() | infinity) -> {ok, pid()} | {error, any()}).
 
-lease(Queue) ->
-   lease(Queue, infinity).
+lease(Pq) ->
+   lease(Pq, infinity).
 
-lease(Queue, Timeout) ->
+lease(Pq, Timeout) ->
    try
-      gen_server:call(Queue, {lease, Timeout}, Timeout)
+      gen_server:call(Pq, {lease, Timeout}, Timeout)
    catch 
       exit:{timeout, _} -> {error, timeout}
    end.
 
 %%
 %% release worker
--spec(release/2 :: (atom() | pid(), pid()) -> ok | {error, any()}).
+-spec(release/2 :: (pq(), pid()) -> ok | {error, any()}).
 
-release(Queue, Pid) ->
-   gen_server:call(Queue, {release, Pid}).
-
-%%
-%%
-suspend(Queue) ->
-   gen_server:call(Queue, suspend).
+release(Pq, Pid) ->
+   gen_server:call(Pq, {release, Pid}).
 
 %%
 %%
-resume(Queue) ->
-   gen_server:call(Queue, resume).
+suspend(Pq) ->
+   gen_server:call(Pq, suspend).
 
+%%
+%%
+resume(Pq) ->
+   gen_server:call(Pq, resume).
 
+%%
+%% touch queue (leases & releases queue head)
+-spec(touch/1 :: (pq()) -> {ok, pid()} | {error, any()}).
+-spec(touch/2 :: (pq(), timeout()) -> {ok, pid()} | {error, any()}).
+
+touch(Pq) ->
+   touch(Pq, infinity).
+
+touch(Pq, Timeout) ->
+   case pq:lease(Pq, Timeout) of
+      {ok, Pid} ->
+         ok = pq:release(Pq, Pid),
+         {ok, Pid};
+      Error ->
+         Error
+   end.
 
 % -ifdef(DEBUG).
 % %%

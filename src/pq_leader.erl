@@ -20,16 +20,6 @@
    lq,              % lease queue
    wq,              % worker queue
    ondemand = false % one-demand worker allocation is used
-
-   % identity,      % queue identity
-   % worker,        % worker factory
-   % length   = 10, % queue length
-   % q,             % worker queue
-   % wait,          % client queue waiting for worker
-
-   % reusable = false,  % workers are re-usable, release operation do not evict them
-   % ondemand = false,  % workers are spawned on-demand
-   % throttle = false   % throttle is off, lease operation do to recover consumed capacity
 }).
 
 %%
@@ -53,14 +43,6 @@ init([{type, X} | Opts], S) ->
 
 init([ondemand | T], S) ->
    init(T, S#leader{ondemand=true});
-
-
-% init([reusable | T], S) ->
-%    init(T, S#srv{reusable=true});
-
-
-% init([throttle | T], S) ->
-%    init(T, S#srv{throttle=true});
 
 init([{register, Fun} | Opts], S)
  when is_function(Fun) ->
@@ -205,6 +187,26 @@ handle_info({'DOWN', _, _, Pid, Reason}, S) ->
       )
    };
 
+%%
+%% plib interface
+handle_info({call, Tx, Msg}, #leader{capacity=0}=S) ->
+   {noreply, enq_plib_request(Tx, Msg, S)};
+
+handle_info({call, Tx, Msg}, #leader{inactive=true}=S) ->
+   {noreply, enq_plib_request(Tx, Msg, S)};
+
+handle_info({call, Tx, Msg}, S) ->
+   {noreply, deq_worker(enq_plib_request(Tx, Msg, S))};
+
+handle_info({cast, Tx, Msg}, #leader{capacity=0}=S) ->
+   {noreply, enq_plib_request(Tx, Msg, S)};
+
+handle_info({cast, Tx, Msg}, #leader{inactive=true}=S) ->
+   {noreply, enq_plib_request(Tx, Msg, S)};
+
+handle_info({cast, Tx, Msg}, S) ->
+   {noreply, deq_worker(enq_plib_request(Tx, Msg, S))};
+
 handle_info(_, S) ->
    %error_logger:error_msg("-- msg --> ~p", [M]),
    {noreply, S}.
@@ -228,7 +230,18 @@ enq_request(Timeout, Req, S) ->
    S#leader{
       lq = q:dropwhile( 
          fun pq_util:expired/1, 
-         q:enq({pq_util:deadline(Timeout), Req}, S#leader.lq)
+         q:enq({lease, pq_util:deadline(Timeout), Req}, S#leader.lq)
+      )
+   }.
+
+%%
+%% enqueue plib request
+enq_plib_request(Tx, Msg, S) ->
+   ?DEBUG("pq ~p (c=~b) enq plib: ~p", [self(), S#leader.capacity, Tx]),
+   S#leader{
+      lq = q:dropwhile( 
+         fun pq_util:expired/1, 
+         q:enq({plib, Tx, Msg}, S#leader.lq)
       )
    }.
 
@@ -259,9 +272,15 @@ deq_worker(#leader{lq={}}=S) ->
 
 deq_worker(#leader{wq={}}=S) ->
    % no valid worker
-   {{_, Req}, Lq} = q:deq(S#leader.lq),
-   Worker         = init_worker(S#leader.factory),
-   gen_server:reply(Req, {ok, Worker}),
+   Worker = init_worker(S#leader.factory),
+   Lq = case q:deq(S#leader.lq) of
+      {{lease, _, Req}, Q} ->
+         gen_server:reply(Req, {ok, Worker}),
+         Q;
+      {{plib, Tx, Msg}, Q} ->
+         plib:relay(Worker, Tx, Msg),
+         Q
+   end,
    ?DEBUG("pq ~p (c=~b) deq worker: ~p to ~p", [self(), S#leader.capacity, Worker, Req]),
    S#leader{
       lq       = Lq,
@@ -269,13 +288,19 @@ deq_worker(#leader{wq={}}=S) ->
    }; 
 
 deq_worker(S) ->
-   {{_, Req}, Lq} = q:deq(S#leader.lq),
    {Worker,   Wq} = q:deq(S#leader.wq),
    case is_process_alive(Worker) of
       false ->
          deq_worker(S#leader{wq=Wq});
       true  ->
-         gen_server:reply(Req, {ok, Worker}),
+         Lq = case q:deq(S#leader.lq) of
+            {{lease, _, Req}, Q} ->
+               gen_server:reply(Req, {ok, Worker}),
+               Q;
+            {{plib, Tx, Msg}, Q} ->
+               plib:relay(Worker, Tx, Msg),
+               Q
+         end,
          ?DEBUG("pq ~p (c=~b) deq worker: ~p to ~p", [self(), S#leader.capacity, Worker, Req]),
          S#leader{
             lq       = Lq,
@@ -314,61 +339,4 @@ free_worker(Q) ->
    ?DEBUG("pq ~p free worker: ~p", [self(), Pid]),
    erlang:exit(Pid, shutdown),
    free_worker(q:tl(Q)).
-
-
-
-% %%
-% %% lease worker
-% lease_worker(undefined, S) ->
-%    S;
-
-% lease_worker(Tx, #srv{q=Q}=S) ->
-%    lease_worker(queue:out(Q), Tx, S).
-
-% lease_worker({empty, _}, Tx, #srv{capacity=C, length=L}=S)
-%  when C < L ->
-%    lease_worker(Tx, init_worker(S));
-
-% lease_worker({empty, _}, _Tx, #srv{capacity=C, length=L})
-%  when C =:= L ->
-%    false;
-
-% lease_worker({{value, Pid}, Q}, Tx, #srv{}=S) ->
-%    case is_process_alive(Pid) of
-%       true  -> allocate_worker(Pid, Tx, S#srv{q=Q});
-%       false -> lease_worker(queue:out(Q), Tx, S)
-%    end.
-
-% allocate_worker(Pid, Tx, #srv{reusable=false, throttle=true, capacity=C}=S) ->
-%    gen_server:reply(Tx, {ok, Pid}),
-%    init_worker(S#srv{capacity=C - 1});
-
-% allocate_worker(Pid, Tx, #srv{reusable=false, throttle=false, capacity=C}=S) ->
-%    gen_server:reply(Tx, {ok, Pid}),
-%    S#srv{capacity=C - 1};
-
-% allocate_worker(Pid, Tx, #srv{reusable=true}=S) ->
-%    gen_server:reply(Tx, {ok, Pid}),
-%    S.
-
-% %%
-% %% release used worker
-% release_worker(_Pid, #srv{reusable=false}=S0) ->
-%    % do nothing to kill process, workers should be self destructible
-%    {Tx, S1} = peek_lease_request(S0),
-%    case lease_worker(Tx, S1) of
-%       false -> S0;  % worker cannot be leased (rollback one state)
-%       S2    -> S2   % worker is leased
-%    end;
-
-% release_worker(Pid, #srv{q=Q, reusable=true}=S0) ->
-%    S1 = case is_process_alive(Pid) of
-%       true   -> S0#srv{q = queue:in(Pid, Q)};
-%       false  -> S0  % no needs to reduce capacity, 'DOWN' signal does it
-%    end,
-%    {Tx, S2} = peek_lease_request(S1),
-%    case lease_worker(Tx, S2) of
-%       false -> S1;  % worker cannot be leased (rollback one state)
-%       S3    -> S3   % worker is leased
-%    end.
 

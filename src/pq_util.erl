@@ -24,4 +24,7 @@ expired({lease, Deadline, _}) ->
    usec() >= Deadline;
 
 expired({plib, {Pid, _},  _}) ->
-   not is_process_alive(Pid).
+   not is_process_alive(Pid);
+
+expired({plib, undefined, _}) ->
+   false.

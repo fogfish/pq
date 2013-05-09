@@ -189,22 +189,13 @@ handle_info({'DOWN', _, _, Pid, Reason}, S) ->
 
 %%
 %% plib interface
-handle_info({call, Tx, Msg}, #leader{capacity=0}=S) ->
+handle_info({'$req', Tx, Msg}, #leader{capacity=0}=S) ->
    {noreply, enq_plib_request(Tx, Msg, S)};
 
-handle_info({call, Tx, Msg}, #leader{inactive=true}=S) ->
+handle_info({'$req', Tx, Msg}, #leader{inactive=true}=S) ->
    {noreply, enq_plib_request(Tx, Msg, S)};
 
-handle_info({call, Tx, Msg}, S) ->
-   {noreply, deq_worker(enq_plib_request(Tx, Msg, S))};
-
-handle_info({cast, Tx, Msg}, #leader{capacity=0}=S) ->
-   {noreply, enq_plib_request(Tx, Msg, S)};
-
-handle_info({cast, Tx, Msg}, #leader{inactive=true}=S) ->
-   {noreply, enq_plib_request(Tx, Msg, S)};
-
-handle_info({cast, Tx, Msg}, S) ->
+handle_info({'$req', Tx, Msg}, S) ->
    {noreply, deq_worker(enq_plib_request(Tx, Msg, S))};
 
 handle_info(_, S) ->

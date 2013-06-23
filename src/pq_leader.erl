@@ -14,8 +14,9 @@
 -record(leader, {
    type             :: disposable | reusable,
    factory          :: pid(),     % worker factory
-   capacity = 0     :: integer(), % queue capacity (remaining workers)
-   size     = 0     :: integer(), % queue size     (max number of workers)
+   linger   = inf   :: integer(), % max number of delayed requests   
+   capacity = 0     :: integer(), % worker queue capacity (remaining workers)
+   size     = 0     :: integer(), % worker queue size     (max number of workers)
    inactive = false :: boolean(), % queue is suspended
    lq,              % lease queue
    wq,              % worker queue
@@ -37,6 +38,10 @@ init([Sup, Opts]) ->
 init([{capacity, X} | Opts], S)
  when is_integer(X) ->
    init(Opts, S#leader{capacity=X, size=X});
+
+init([{linger,   X} | Opts], S)
+ when is_integer(X) ->
+   init(Opts, S#leader{linger=X});
 
 init([{type, X} | Opts], S) ->
    init(Opts, S#leader{type=X});
@@ -218,23 +223,28 @@ code_change(_Vsn, S, _Extra) ->
 %% enqueue lease request
 enq_request(Timeout, Req, S) ->
    ?DEBUG("pq ~p (c=~b) enq request: ~p (timeout ~p)", [self(), S#leader.capacity, Req, Timeout]),
-   S#leader{
-      lq = q:dropwhile( 
-         fun pq_util:expired/1, 
-         q:enq({lease, pq_util:deadline(Timeout), Req}, S#leader.lq)
-      )
-   }.
+   % clean-up queue
+   Q = q:dropwhile(fun pq_util:expired/1, S#leader.lq),
+   case q:length(Q) of
+      X when X =< S#leader.linger ->
+         S#leader{lq = q:enq({lease, pq_util:deadline(Timeout), Req}, Q)};
+      _ ->
+         gen_server:reply(Req, {error, no_capacity}),
+         S#leader{lq = Q}
+   end.
 
 %%
 %% enqueue plib request
 enq_plib_request(Tx, Msg, S) ->
    ?DEBUG("pq ~p (c=~b) enq plib: ~p", [self(), S#leader.capacity, Tx]),
-   S#leader{
-      lq = q:dropwhile( 
-         fun pq_util:expired/1, 
-         q:enq({plib, Tx, Msg}, S#leader.lq)
-      )
-   }.
+   Q = q:dropwhile(fun pq_util:expired/1, S#leader.lq),
+   case q:length(Q) of
+      X when X =< S#leader.linger ->
+         S#leader{lq = q:enq({plib, Tx, Msg}, Q)};
+      _ ->
+         plib:ack(Tx, {error, no_capacity}),
+         S#leader{lq = Q}
+   end.
 
 %%
 %% enqueue new worker
@@ -266,13 +276,13 @@ deq_worker(#leader{wq={}}=S) ->
    Worker = init_worker(S#leader.factory),
    Lq = case q:deq(S#leader.lq) of
       {{lease, _, Req}, Q} ->
+         ?DEBUG("pq ~p (c=~b) deq worker: ~p to ~p", [self(), S#leader.capacity, Worker, Req]),
          gen_server:reply(Req, {ok, Worker}),
          Q;
       {{plib, Tx, Msg}, Q} ->
          plib:relay(Worker, Tx, Msg),
          Q
    end,
-   ?DEBUG("pq ~p (c=~b) deq worker: ~p to ~p", [self(), S#leader.capacity, Worker, Req]),
    S#leader{
       lq       = Lq,
       capacity = S#leader.capacity - 1
@@ -286,13 +296,13 @@ deq_worker(S) ->
       true  ->
          Lq = case q:deq(S#leader.lq) of
             {{lease, _, Req}, Q} ->
+               ?DEBUG("pq ~p (c=~b) deq worker: ~p to ~p", [self(), S#leader.capacity, Worker, Req]),
                gen_server:reply(Req, {ok, Worker}),
                Q;
             {{plib, Tx, Msg}, Q} ->
                plib:relay(Worker, Tx, Msg),
                Q
          end,
-         ?DEBUG("pq ~p (c=~b) deq worker: ~p to ~p", [self(), S#leader.capacity, Worker, Req]),
          S#leader{
             lq       = Lq,
             wq       = Wq,

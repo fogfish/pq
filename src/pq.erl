@@ -28,8 +28,8 @@
 start_link(Opts) ->
    pq_queue_sup:start_link(undefined, Opts).
    
-start_link(Q, Opts) ->
-   pq_queue_sup:start_link(Q, Opts).
+start_link(Name, Opts) ->
+   pq_queue_sup:start_link(Name, Opts).
 
 %%
 %%
@@ -47,11 +47,7 @@ lease(Pq) ->
    lease(Pq, infinity).
 
 lease(Pq, Timeout) ->
-   try
-      gen_server:call(Pq, {lease, Timeout}, Timeout)
-   catch 
-      exit:{timeout, _} -> {error, timeout}
-   end.
+   gen_server:call(Pq, {lease, Timeout}, Timeout).
 
 %%
 %% release worker
@@ -61,12 +57,12 @@ release(Pq, Pid) ->
    gen_server:call(Pq, {release, Pid}).
 
 %%
-%%
+%% suspend queue
 suspend(Pq) ->
    gen_server:call(Pq, suspend).
 
 %%
-%%
+%% resume queues
 resume(Pq) ->
    gen_server:call(Pq, resume).
 
@@ -79,13 +75,9 @@ touch(Pq) ->
    touch(Pq, infinity).
 
 touch(Pq, Timeout) ->
-   case pq:lease(Pq, Timeout) of
-      {ok, Pid} ->
-         ok = pq:release(Pq, Pid),
-         {ok, Pid};
-      Error ->
-         Error
-   end.
+   {ok, Pid} = pq:lease(Pq, Timeout),
+   ok = pq:release(Pq, Pid),
+   {ok, Pid}.
 
 % -ifdef(DEBUG).
 % %%

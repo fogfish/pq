@@ -1,6 +1,6 @@
 {application, pq,
    [
-      {description, "process queue / unit-of-work"},
+      {description, "process queue - unit-of-work"},
       {vsn,         "1.1.0"},
       {modules,     [
          pq,

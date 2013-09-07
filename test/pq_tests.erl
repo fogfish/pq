@@ -27,7 +27,7 @@ dq_init() ->
    {ok, Pid} = pq:start_link(dq, [
       {type,   disposable},
       {capacity,        2}, 
-      {worker, fun echo/0}
+      {worker,    pq_echo}
    ]).
 
 dq_free({ok, Pid}) ->
@@ -56,7 +56,7 @@ dq_ondemand_init() ->
    {ok, Pid} = pq:start_link(ddq, [
       {type,   disposable},
       {capacity,        2}, 
-      {worker, fun echo/0},
+      {worker,    pq_echo},
       ondemand
    ]).
 
@@ -86,7 +86,7 @@ reusable_init() ->
    {ok, Pid} = pq:start_link(rq, [
       {type,     reusable},
       {capacity,        2}, 
-      {worker, fun echo/0}
+      {worker,    pq_echo}
    ]).
 
 reusable_free({ok, Pid}) ->
@@ -115,7 +115,7 @@ reusable_ondemand_init() ->
    {ok, Pid} = pq:start_link(drq, [
       {type,     reusable},
       {capacity,        2}, 
-      {worker, fun echo/0},
+      {worker,    pq_echo},
       ondemand
    ]).
 
@@ -179,21 +179,11 @@ suspend_resume(Q, Time) ->
    timer:sleep(Time),
    ok = pq:resume(Q).
 
+
 %%
-%%
+%% ping worker echo process
 ping(Pid, Msg) ->
    Pid ! {self(), Msg},
    receive
       Msg -> ok
-   end.
-
-%%
-%% test echo worker
-echo() ->
-   receive
-      {Pid, exit} ->
-         Pid ! exit;
-      {Pid,  Msg} ->
-         Pid ! Msg,
-         echo()
    end.

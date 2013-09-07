@@ -1,14 +1,34 @@
+%%
+%%   Copyright (c) 2012 - 2013, Dmitry Kolesnikov
+%%   All Rights Reserved.
+%%
+%%   Licensed under the Apache License, Version 2.0 (the "License");
+%%   you may not use this file except in compliance with the License.
+%%   You may obtain a copy of the License at
+%%
+%%       http://www.apache.org/licenses/LICENSE-2.0
+%%
+%%   Unless required by applicable law or agreed to in writing, software
+%%   distributed under the License is distributed on an "AS IS" BASIS,
+%%   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%%   See the License for the specific language governing permissions and
+%%   limitations under the License.
+%%
 %% @description
-%%   pq leader, allocates requests among workers 
+%%   pq leader allocates requests among workers 
 -module(pq_leader).
 -behaviour(gen_server).
 -include("pq.hrl").
 
 -export([
-   %% api
    start_link/3, 
    % gen_server
-   init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3
+   init/1, 
+   terminate/2,
+   handle_call/3, 
+   handle_cast/2, 
+   handle_info/2,  
+   code_change/3
 ]).
 
 -record(leader, {
@@ -23,6 +43,12 @@
    ondemand = false % one-demand worker allocation is used
 }).
 
+%%%------------------------------------------------------------------
+%%%
+%%% Factory
+%%%
+%%%------------------------------------------------------------------
+
 %%
 %%
 start_link(Sup, undefined, Opts) ->
@@ -32,7 +58,7 @@ start_link(Sup, Name, Opts) ->
    gen_server:start_link({local, Name}, ?MODULE, [Sup, Opts], []).
 
 init([Sup, Opts]) ->
-   self() ! {set_factory, Sup},
+   self() ! {resolve_factory, Sup},
    {ok, init(Opts, #leader{})}.
 
 init([{capacity, X} | Opts], S)
@@ -49,19 +75,13 @@ init([{type, X} | Opts], S) ->
 init([ondemand | T], S) ->
    init(T, S#leader{ondemand=true});
 
-init([{register, Fun} | Opts], S)
- when is_function(Fun) ->
-   % register function allow to implement custom queue identity schema
-   Fun(),
-   init(Opts, S);
-
 init([_ | Opts], S) ->
    init(Opts, S);
 
 init([], S) ->
    S#leader{
-      lq = q:new(),
-      wq = q:new()
+      lq = deq:new(),
+      wq = deq:new()
    }.
 
 terminate(_, _) ->
@@ -76,15 +96,18 @@ terminate(_, _) ->
 %%
 %%
 handle_call({lease, Timeout}, Tx, #leader{capacity=0}=S) ->
+   % no capacity - wait for spare one
    {noreply, enq_request(Timeout, Tx, S)};
 
 handle_call({lease, Timeout}, Tx, #leader{inactive=true}=S) ->
+   % queue is not active
    {noreply, enq_request(Timeout, Tx, S)};
 
 handle_call({lease, Timeout}, Tx, S) ->
    {noreply, deq_worker(enq_request(Timeout, Tx, S))};
 
-
+%%
+%%
 handle_call({release, _Pid}, Tx, #leader{inactive=true}=S) ->
    % TODO: shutdown Pid
    gen_server:reply(Tx, ok), % reply immediately
@@ -109,6 +132,8 @@ handle_call({release, Pid}, Tx, #leader{type=reusable}=S) ->
          {noreply, S}
    end;
 
+%%
+%%
 handle_call(suspend, _, S) ->
    ?DEBUG("pq ~p suspend", [self()]),
    free_worker(S#leader.wq),
@@ -116,7 +141,7 @@ handle_call(suspend, _, S) ->
       S#leader{
          inactive = true,
          capacity = S#leader.size,
-         wq       = q:new()
+         wq       = deq:new()
       }
    };
 
@@ -130,7 +155,7 @@ handle_call(resume, _, #leader{ondemand=false}=S) ->
       deq_worker(
          S#leader{
             inactive = false,
-            wq       = lists:foldl(fun q:enq/2, q:new(), Workers)
+            wq       = lists:foldl(fun deq:enq/2, deq:new(), Workers)
          }
       )
    };
@@ -154,18 +179,18 @@ handle_cast(_, S) ->
 
 %%
 %%
-handle_info({set_factory, Sup}, #leader{ondemand=false}=S) ->
-   {ok, Pid} = pq_queue_sup:worker(Sup),
-   Workers   = [init_worker(Pid) || _ <- lists:seq(1, S#leader.capacity)],
+handle_info({resolve_factory, Sup}, #leader{ondemand=false}=S) ->
+   {_, Pid, _, _} = lists:keyfind(pq_worker_sup, 1, supervisor:which_children(Sup)),
+   Workers = [init_worker(Pid) || _ <- lists:seq(1, S#leader.capacity)],
    {noreply, 
       S#leader{
          factory = Pid,
-         wq      = lists:foldl(fun q:enq/2, q:new(), Workers)
+         wq      = lists:foldl(fun deq:enq/2, deq:new(), Workers)
       }
    };
 
-handle_info({set_factory, Sup}, S) ->
-   {ok, Pid} = pq_queue_sup:worker(Sup),
+handle_info({resolve_factory, Sup}, S) ->
+   {_, Pid, _, _} = lists:keyfind(pq_worker_sup, 1, supervisor:which_children(Sup)),
    {noreply, S#leader{factory=Pid}};
 
 handle_info({'DOWN', _, _, _Pid, _Reason}, #leader{inactive=true}=S) ->
@@ -192,19 +217,7 @@ handle_info({'DOWN', _, _, Pid, Reason}, S) ->
       )
    };
 
-%%
-%% plib interface
-handle_info({'$req', Tx, Msg}, #leader{capacity=0}=S) ->
-   {noreply, enq_plib_request(Tx, Msg, S)};
-
-handle_info({'$req', Tx, Msg}, #leader{inactive=true}=S) ->
-   {noreply, enq_plib_request(Tx, Msg, S)};
-
-handle_info({'$req', Tx, Msg}, S) ->
-   {noreply, deq_worker(enq_plib_request(Tx, Msg, S))};
-
 handle_info(_, S) ->
-   %error_logger:error_msg("-- msg --> ~p", [M]),
    {noreply, S}.
 
 %%
@@ -224,30 +237,17 @@ code_change(_Vsn, S, _Extra) ->
 enq_request(Timeout, Req, S) ->
    ?DEBUG("pq ~p (c=~b) enq request: ~p (timeout ~p)", [self(), S#leader.capacity, Req, Timeout]),
    % clean-up queue
-   Q = q:dropwhile(fun pq_util:expired/1, S#leader.lq),
-   case q:length(Q) of
+   Q = deq:dropwhile(fun pq_util:expired/1, S#leader.lq),
+   case deq:length(Q) of
       X when X =< S#leader.linger ->
-         S#leader{lq = q:enq({lease, pq_util:deadline(Timeout), Req}, Q)};
+         S#leader{lq = deq:enq({lease, pq_util:deadline(Timeout), Req}, Q)};
       _ ->
          gen_server:reply(Req, {error, no_capacity}),
          S#leader{lq = Q}
    end.
 
 %%
-%% enqueue plib request
-enq_plib_request(Tx, Msg, S) ->
-   ?DEBUG("pq ~p (c=~b) enq plib: ~p", [self(), S#leader.capacity, Tx]),
-   Q = q:dropwhile(fun pq_util:expired/1, S#leader.lq),
-   case q:length(Q) of
-      X when X =< S#leader.linger ->
-         S#leader{lq = q:enq({plib, Tx, Msg}, Q)};
-      _ ->
-         plib:ack(Tx, {error, no_capacity}),
-         S#leader{lq = Q}
-   end.
-
-%%
-%% enqueue new worker
+%% enqueue worker
 enq_worker(#leader{capacity=C, size=Size}=S)
  when C =< Size ->
    % limit number of workers
@@ -260,7 +260,7 @@ enq_worker(Worker, S) ->
    ?DEBUG("pq ~p (c=~b) enq worker: ~p", [self(), S#leader.capacity, Worker]),
    inc_capacity(
       S#leader{
-         wq = q:enq(Worker, S#leader.wq)
+         wq = deq:enq(Worker, S#leader.wq)
       }
    ).
 
@@ -274,35 +274,23 @@ deq_worker(#leader{lq={}}=S) ->
 deq_worker(#leader{wq={}}=S) ->
    % no valid worker
    Worker = init_worker(S#leader.factory),
-   Lq = case q:deq(S#leader.lq) of
-      {{lease, _, Req}, Q} ->
-         ?DEBUG("pq ~p (c=~b) deq worker: ~p to ~p", [self(), S#leader.capacity, Worker, Req]),
-         gen_server:reply(Req, {ok, Worker}),
-         Q;
-      {{plib, Tx, Msg}, Q} ->
-         plib:relay(Worker, Tx, Msg),
-         Q
-   end,
+   {{lease, _, Req}, Lq} = deq:deq(S#leader.lq), 
+   ?DEBUG("pq ~p (c=~b) deq worker: ~p to ~p", [self(), S#leader.capacity, Worker, Req]),
+   gen_server:reply(Req, {ok, Worker}),
    S#leader{
       lq       = Lq,
       capacity = S#leader.capacity - 1
    }; 
 
 deq_worker(S) ->
-   {Worker,   Wq} = q:deq(S#leader.wq),
+   {Worker, Wq} = deq:deq(S#leader.wq),
    case is_process_alive(Worker) of
       false ->
          deq_worker(S#leader{wq=Wq});
       true  ->
-         Lq = case q:deq(S#leader.lq) of
-            {{lease, _, Req}, Q} ->
-               ?DEBUG("pq ~p (c=~b) deq worker: ~p to ~p", [self(), S#leader.capacity, Worker, Req]),
-               gen_server:reply(Req, {ok, Worker}),
-               Q;
-            {{plib, Tx, Msg}, Q} ->
-               plib:relay(Worker, Tx, Msg),
-               Q
-         end,
+         {{lease, _, Req}, Lq} = deq:deq(S#leader.lq),
+         ?DEBUG("pq ~p (c=~b) deq worker: ~p to ~p", [self(), S#leader.capacity, Worker, Req]),
+         gen_server:reply(Req, {ok, Worker}),
          S#leader{
             lq       = Lq,
             wq       = Wq,
@@ -336,8 +324,8 @@ init_worker(Sup) ->
 free_worker({}) ->
    ok;
 free_worker(Q) ->
-   Pid = q:hd(Q),
+   Pid = deq:head(Q),
    ?DEBUG("pq ~p free worker: ~p", [self(), Pid]),
    erlang:exit(Pid, shutdown),
-   free_worker(q:tl(Q)).
+   free_worker(deq:tail(Q)).
 

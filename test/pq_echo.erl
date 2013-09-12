@@ -3,11 +3,11 @@
 -module(pq_echo).
 
 -export([
-   start_link/0, 
+   start_link/1, 
    init/1
 ]).
 
-start_link() ->
+start_link(_) ->
     proc_lib:start_link(?MODULE, init, [self()]).
 
 init(Parent) ->

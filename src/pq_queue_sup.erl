@@ -38,9 +38,9 @@ init([Name, Opts]) ->
    % read worker specification
    Worker = case lists:keyfind(worker, 1, Opts) of
       {worker, {Mod, Args}} -> 
-         {Mod, Args};
+         {Mod, [self() | Args]};
       {worker, Mod} when is_atom(Mod) ->
-         {Mod, []}
+         {Mod, [self()]}
    end,
    {ok,
       {

@@ -21,7 +21,8 @@
 
 -export([
    start_link/2, 
-   init/1
+   init/1,
+   client_api/1
 ]).
 
 %%
@@ -53,4 +54,11 @@ init([Name, Opts]) ->
          ]
       }
    }.
+
+
+%%
+%% return pid of client api
+client_api(Sup) ->
+   {_, Pid, _, _} = lists:keyfind(pq_leader, 1, supervisor:which_children(Sup)),
+   {ok, Pid}.
 

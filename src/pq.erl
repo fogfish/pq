@@ -27,19 +27,19 @@
 -export([
    start_link/1, 
    start_link/2, 
+   queue/1,
    lease/1, 
    lease/2, 
    release/2,
    suspend/1, 
-   resume/1,
-   leader/1 
+   resume/1
 ]).
 
 %%
 -type(pq() :: atom() | pid()).
 
 %%
-%% start pool of processes
+%% start pool of processes, return supervisor tree
 %% Options:
 %%   {worker,    atom() | {atom(), list()}} - worker specification
 %%   {type,      disposable | reusable} - worker type
@@ -54,6 +54,21 @@ start_link(Opts) ->
    
 start_link(Name, Opts) ->
    pq_queue_sup:start_link(Name, Opts).
+
+%%
+%% start pool of processes, return pid of queue
+-spec(queue/1 :: (list() | pid()) -> {ok, pid()} | {error, any()}).
+
+queue(Opts)
+ when is_list(Opts) ->
+   case start_link(Opts) of
+      {ok, Pid} -> pq_queue_sup:client_api(Pid);
+      Error     -> Error
+   end;
+
+queue(Pid)
+ when is_pid(Pid) ->
+   cargo_cask_sup:client_api(Pid).
 
 %%
 %% lease worker
@@ -89,11 +104,4 @@ resume(Pq) ->
    gen_server:call(Pq, resume).
 
 
-%%
-%% return pid of queue leader process
--spec(leader/1 :: (pid()) -> pid()).
-
-leader(Sup) ->
-   {_, Pid, _, _} = lists:keyfind(pq_leader, 1, supervisor:which_children(Sup)),
-   Pid.
 

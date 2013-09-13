@@ -1,7 +1,7 @@
 {application, pq,
    [
       {description, "process queue - unit-of-work"},
-      {vsn,         "1.2.0"},
+      {vsn,         "1.3.0"},
       {modules,     [
          pq,
          pq_sup,

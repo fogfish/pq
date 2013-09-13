@@ -36,24 +36,33 @@ start_link(Name, Opts) ->
    supervisor:start_link(?MODULE, [Name, Opts]).
    
 init([Name, Opts]) ->   
-   % read worker specification
-   Worker = case lists:keyfind(worker, 1, Opts) of
-      {worker, {Mod, Args}} -> 
-         {Mod, [self() | Args]};
-      {worker, Mod} when is_atom(Mod) ->
-         {Mod, [self()]}
-   end,
    {ok,
       {
          {one_for_all, 4, 1800},
          [
             %% worker factory
-            ?CHILD(supervisor, pq_worker_sup, [Worker])
+            ?CHILD(supervisor, pq_worker_sup, [worker_spec(Opts)])
             %% queue leader
            ,?CHILD(worker, pq_leader, [self(), Name, Opts])
          ]
       }
    }.
+
+%%
+%% build worker spec
+worker_spec(Opts) ->
+   case lists:keyfind(worker, 1, Opts) of
+      {worker, {Mod, Args}} -> 
+         {Mod, worker_args(Args, Opts)};
+      {worker, Mod} when is_atom(Mod) ->
+         {Mod, worker_args([],   Opts)}
+   end.
+
+worker_args(Args, Opts) ->
+   case lists:member('self-release', Opts) of
+      false -> Args;
+      true  -> [self() | Args]
+   end.
 
 
 %%

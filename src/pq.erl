@@ -45,7 +45,8 @@
 %%   {type,      disposable | reusable} - worker type
 %%   {capacity,  integer()} - max number of workers
 %%   {linger,    integer()} - max number of delayed lease requests
-%%   {ondemand,  boolean()} - worker pre-allocation strategy
+%%   ondemand               - worker pre-allocation strategy
+%%   'self-release'         - worker do self release upon task completion
 -spec(start_link/1 :: (list()) -> {ok, pid()} | {error, any()}).
 -spec(start_link/2 :: (atom(), list()) -> {ok, pid()} | {error, any()}).
 
@@ -68,7 +69,7 @@ queue(Opts)
 
 queue(Pid)
  when is_pid(Pid) ->
-   cargo_cask_sup:client_api(Pid).
+   pq_queue_sup:client_api(Pid).
 
 %%
 %% lease worker

@@ -110,7 +110,7 @@ resume(Pq) ->
 -spec(worker/1 :: (pq()) -> ok).
 
 worker(Pq) ->
-   gen_server:call(Pq, resume).
+   gen_server:call(Pq, worker).
    
 
 

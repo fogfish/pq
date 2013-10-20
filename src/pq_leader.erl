@@ -21,7 +21,7 @@
 -include("pq.hrl").
 
 -export([
-   start_link/3, 
+   start_link/4, 
    % gen_server
    init/1, 
    terminate/2,
@@ -40,7 +40,8 @@
    inactive = false :: boolean(), % queue is suspended
    lq,              % lease queue
    wq,              % worker queue
-   ondemand = false % one-demand worker allocation is used
+   ondemand = false,              % flag to indicates one-demand worker allocation
+   worker   = undefined           % opaque worker specification (used as global dictionary)
 }).
 
 %%%------------------------------------------------------------------
@@ -51,15 +52,15 @@
 
 %%
 %%
-start_link(Sup, undefined, Opts) ->
-   gen_server:start_link(?MODULE, [Sup, Opts], []);
+start_link(Sup, undefined, Opts, Worker) ->
+   gen_server:start_link(?MODULE, [Sup, Opts, Worker], []);
 
-start_link(Sup, Name, Opts) ->
-   gen_server:start_link({local, Name}, ?MODULE, [Sup, Opts], []).
+start_link(Sup, Name, Opts, Worker) ->
+   gen_server:start_link({local, Name}, ?MODULE, [Sup, Opts, Worker], []).
 
-init([Sup, Opts]) ->
+init([Sup, Opts, Worker]) ->
    self() ! {resolve_factory, Sup},
-   {ok, init(Opts, #leader{})}.
+   {ok, init(Opts, #leader{worker=Worker})}.
 
 init([{capacity, X} | Opts], S)
  when is_integer(X) ->
@@ -168,6 +169,11 @@ handle_call(resume, _, S) ->
          }
       )
    };
+
+%%
+%%
+handle_call(worker, _, S) ->
+   {reply, {ok, S#leader.worker}, S};
 
 handle_call(_, _, S) ->
    {noreply, S}.

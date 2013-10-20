@@ -36,6 +36,7 @@ start_link(Name, Opts) ->
    supervisor:start_link(?MODULE, [Name, Opts]).
    
 init([Name, Opts]) ->   
+   {worker, Worker} = lists:keyfind(worker, 1, Opts),
    {ok,
       {
          {one_for_all, 4, 1800},
@@ -43,7 +44,7 @@ init([Name, Opts]) ->
             %% worker factory
             ?CHILD(supervisor, pq_worker_sup, [worker_spec(Opts)])
             %% queue leader
-           ,?CHILD(worker, pq_leader, [self(), Name, Opts])
+           ,?CHILD(worker, pq_leader, [self(), Name, Opts, Worker])
          ]
       }
    }.

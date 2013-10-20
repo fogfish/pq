@@ -32,7 +32,8 @@
    lease/2, 
    release/2,
    suspend/1, 
-   resume/1
+   resume/1,
+   worker/1
 ]).
 
 %%
@@ -104,5 +105,12 @@ suspend(Pq) ->
 resume(Pq) ->
    gen_server:call(Pq, resume).
 
+%%
+%% read queue worker specification
+-spec(worker/1 :: (pq()) -> ok).
+
+worker(Pq) ->
+   gen_server:call(Pq, resume).
+   
 
 

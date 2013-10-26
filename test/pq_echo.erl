@@ -3,14 +3,14 @@
 -module(pq_echo).
 
 -export([
-   start_link/0, 
-   init/1
+   start_link/1, 
+   init/2
 ]).
 
-start_link() ->
-    proc_lib:start_link(?MODULE, init, [self()]).
+start_link(Queue) ->
+    proc_lib:start_link(?MODULE, init, [self(), Queue]).
 
-init(Parent) ->
+init(Parent, _Queue) ->
    proc_lib:init_ack(Parent, {ok, self()}),
    loop().
 

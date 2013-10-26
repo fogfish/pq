@@ -20,7 +20,7 @@
 -behaviour(supervisor).
 
 -export([
-   start_link/2, 
+   start_link/3, 
    init/1,
    client_api/1
 ]).
@@ -32,43 +32,44 @@
 
 %%
 %%
-start_link(Name, Opts) ->
-   supervisor:start_link(?MODULE, [Name, Opts]).
-   
-init([Name, Opts]) ->   
-   {worker, Worker} = lists:keyfind(worker, 1, Opts),
+start_link(Owner, Name, Opts) ->
+   {ok, Sup} = supervisor:start_link(?MODULE, [Owner, Name, Opts]),
+   %% resolve leader pid and start worker factory
+   Leader    = child(Sup, pq_leader),
+   {ok, Pid} = case lists:keyfind(worker, 1, Opts) of
+      {worker, {Mod, Args}} -> 
+         supervisor:start_child(Sup, 
+            ?CHILD(supervisor, pq_worker_sup, [{Mod, [Leader | Args]}])
+         );
+      {worker, Mod} when is_atom(Mod) ->
+         supervisor:start_child(Sup, 
+            ?CHILD(supervisor, pq_worker_sup, [{Mod, [Leader]}])
+         )
+   end,
+   ok = pq_leader:ioctl(Leader, {factory, Pid}),
+   {ok, Sup}.
+     
+
+init([Owner, Name, Opts]) ->   
    {ok,
       {
-         {one_for_all, 4, 1800},
+         {one_for_all, 0, 1},
          [
-            %% worker factory
-            ?CHILD(supervisor, pq_worker_sup, [worker_spec(Opts)])
             %% queue leader
-           ,?CHILD(worker, pq_leader, [self(), Name, Opts, Worker])
+            ?CHILD(worker, pq_leader, [self(), Owner, Name, Opts])
          ]
       }
    }.
 
 %%
-%% build worker spec
-worker_spec(Opts) ->
-   case lists:keyfind(worker, 1, Opts) of
-      {worker, {Mod, Args}} -> 
-         {Mod, worker_args(Args, Opts)};
-      {worker, Mod} when is_atom(Mod) ->
-         {Mod, worker_args([],   Opts)}
-   end.
-
-worker_args(Args, Opts) ->
-   case lists:member('self-release', Opts) of
-      false -> Args;
-      true  -> [self() | Args]
-   end.
-
+%%
+child(Sup, Id) ->
+   erlang:element(2,
+      lists:keyfind(Id, 1, supervisor:which_children(Sup))
+   ).
 
 %%
 %% return pid of client api
 client_api(Sup) ->
-   {_, Pid, _, _} = lists:keyfind(pq_leader, 1, supervisor:which_children(Sup)),
-   {ok, Pid}.
+   {ok, child(Sup, pq_leader)}.
 

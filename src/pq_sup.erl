@@ -25,6 +25,12 @@
 ]).
 
 %%
+-define(CHILD(Type, I),            {I,  {I, start_link,   []}, temporary, 30000, Type, dynamic}).
+-define(CHILD(Type, I, Args),      {I,  {I, start_link, Args}, temporary, 30000, Type, dynamic}).
+-define(CHILD(Type, ID, I, Args),  {ID, {I, start_link, Args}, temporary, 30000, Type, dynamic}).
+
+
+%%
 %%
 start_link() ->
    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
@@ -32,8 +38,11 @@ start_link() ->
 init([]) ->   
    {ok,
       {
-         {one_for_one, 4, 1800},
-         []
+         {simple_one_for_one, 4, 1800},
+         [
+         	%% queue is transient, application is responsible to restart it
+         	?CHILD(supervisor, pq_queue_sup)
+         ]
       }
    }.
 

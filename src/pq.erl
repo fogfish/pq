@@ -25,9 +25,9 @@
 -include("pq.hrl").
 
 -export([
+   start/0,
    start_link/1, 
    start_link/2, 
-   queue/1,
    lease/1, 
    lease/2, 
    release/2,
@@ -38,6 +38,11 @@
 
 %%
 -type(pq() :: atom() | pid()).
+
+%%
+%% start application
+start() ->
+   application:start(?MODULE).
 
 %%
 %% start pool of processes, return supervisor tree
@@ -52,25 +57,13 @@
 -spec(start_link/2 :: (atom(), list()) -> {ok, pid()} | {error, any()}).
 
 start_link(Opts) ->
-   pq_queue_sup:start_link(undefined, Opts).
-   
+   start_link(undefined, Opts).
+
 start_link(Name, Opts) ->
-   pq_queue_sup:start_link(Name, Opts).
-
-%%
-%% start pool of processes, return pid of queue
--spec(queue/1 :: (list() | pid()) -> {ok, pid()} | {error, any()}).
-
-queue(Opts)
- when is_list(Opts) ->
-   case start_link(Opts) of
+   case supervisor:start_child(pq_sup, [self(), Name, Opts]) of
       {ok, Pid} -> pq_queue_sup:client_api(Pid);
       Error     -> Error
-   end;
-
-queue(Pid)
- when is_pid(Pid) ->
-   pq_queue_sup:client_api(Pid).
+   end.
 
 %%
 %% lease worker

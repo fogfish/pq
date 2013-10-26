@@ -28,7 +28,9 @@
    handle_call/3, 
    handle_cast/2, 
    handle_info/2,  
-   code_change/3
+   code_change/3,
+   % api
+   ioctl/2
 ]).
 
 -record(leader, {
@@ -52,15 +54,15 @@
 
 %%
 %%
-start_link(Sup, undefined, Opts, Worker) ->
-   gen_server:start_link(?MODULE, [Sup, Opts, Worker], []);
+start_link(Sup, Owner, undefined, Opts) ->
+   gen_server:start_link(?MODULE, [Sup, Owner, Opts], []);
 
-start_link(Sup, Name, Opts, Worker) ->
-   gen_server:start_link({local, Name}, ?MODULE, [Sup, Opts, Worker], []).
+start_link(Sup, Owner, Name, Opts) ->
+   gen_server:start_link({local, Name}, ?MODULE, [Sup, Owner, Opts], []).
 
-init([Sup, Opts, Worker]) ->
-   self() ! {resolve_factory, Sup},
-   {ok, init(Opts, #leader{worker=Worker})}.
+init([Sup, Owner, Opts]) ->
+   _ = erlang:link(Owner),
+   {ok, init(Opts, #leader{})}.
 
 init([{capacity, X} | Opts], S)
  when is_integer(X) ->
@@ -72,6 +74,9 @@ init([{linger,   X} | Opts], S)
 
 init([{type, X} | Opts], S) ->
    init(Opts, S#leader{type=X});
+
+init([{worker, X} | Opts], S) ->
+   init(Opts, S#leader{worker=X});
 
 init([ondemand | T], S) ->
    init(T, S#leader{ondemand=true});
@@ -87,6 +92,20 @@ init([], S) ->
 
 terminate(_, _) ->
    ok.
+
+%%%------------------------------------------------------------------
+%%%
+%%% api
+%%%
+%%%------------------------------------------------------------------
+
+%%
+%%
+ioctl(Pid, {Req, Val}) ->
+   gen_server:call(Pid, {ioctl, Req, Val});
+ioctl(Pid, Req) ->
+   gen_server:call(Pid, {ioctl, Req}).
+
 
 %%%------------------------------------------------------------------
 %%%
@@ -171,10 +190,24 @@ handle_call(resume, _, S) ->
    };
 
 %%
-%%
-handle_call(worker, _, S) ->
+%% ioctl
+handle_call({ioctl, factory, Pid}, _Tx, #leader{ondemand=false}=S) ->
+   Workers = [init_worker(Pid) || _ <- lists:seq(1, S#leader.capacity)],
+   {reply, ok,  
+      S#leader{
+         factory = Pid,
+         wq      = lists:foldl(fun deq:enq/2, deq:new(), Workers)
+      }
+   };
+
+handle_call({ioctl, factory, Pid}, _Tx, S) ->
+   {reply, ok, S#leader{factory=Pid}};
+
+handle_call({ioctl, worker}, _Tx, S) ->
    {reply, {ok, S#leader.worker}, S};
 
+%%
+%%
 handle_call(_, _, S) ->
    {noreply, S}.
 
@@ -185,20 +218,6 @@ handle_cast(_, S) ->
 
 %%
 %%
-handle_info({resolve_factory, Sup}, #leader{ondemand=false}=S) ->
-   {_, Pid, _, _} = lists:keyfind(pq_worker_sup, 1, supervisor:which_children(Sup)),
-   Workers = [init_worker(Pid) || _ <- lists:seq(1, S#leader.capacity)],
-   {noreply, 
-      S#leader{
-         factory = Pid,
-         wq      = lists:foldl(fun deq:enq/2, deq:new(), Workers)
-      }
-   };
-
-handle_info({resolve_factory, Sup}, S) ->
-   {_, Pid, _, _} = lists:keyfind(pq_worker_sup, 1, supervisor:which_children(Sup)),
-   {noreply, S#leader{factory=Pid}};
-
 handle_info({'DOWN', _, _, _Pid, _Reason}, #leader{inactive=true}=S) ->
    % queue is not active, do not recover worker
    {noreply, S};

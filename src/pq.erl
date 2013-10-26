@@ -103,7 +103,7 @@ resume(Pq) ->
 -spec(worker/1 :: (pq()) -> ok).
 
 worker(Pq) ->
-   gen_server:call(Pq, worker).
-   
+   pq_leader:ioctl(Pq, worker).
+
 
 

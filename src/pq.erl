@@ -45,7 +45,7 @@ start() ->
    application:start(?MODULE).
 
 %%
-%% start pool of processes, return supervisor tree
+%% start pool of processes
 %% Options:
 %%   {worker,    atom() | {atom(), list()}} - worker specification
 %%   {type,      disposable | reusable} - worker type

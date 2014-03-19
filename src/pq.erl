@@ -26,8 +26,10 @@
 
 -export([
    start/0,
-   start_link/1, 
    start_link/2, 
+   create/1,
+   create/2,
+   close/1,
    lease/1, 
    lease/2, 
    release/2,
@@ -52,18 +54,34 @@ start() ->
 %%   {capacity,  integer()} - max number of workers
 %%   {linger,    integer()} - max number of delayed lease requests
 %%   ondemand               - worker pre-allocation strategy
-%%   'self-release'         - worker do self release upon task completion
--spec(start_link/1 :: (list()) -> {ok, pid()} | {error, any()}).
 -spec(start_link/2 :: (atom(), list()) -> {ok, pid()} | {error, any()}).
 
-start_link(Opts) ->
-   start_link(undefined, Opts).
-
 start_link(Name, Opts) ->
+   pq_queue_sup:start_link(self(), Name, Opts).
+
+%%
+%% create pool of processes
+%% See start_link opts
+-spec(create/1 :: (list()) -> {ok, pid()} | {error, any()}).
+-spec(create/2 :: (atom(), list()) -> {ok, pid()} | {error, any()}).
+
+create(Opts) ->
+   create(undefined, Opts).
+
+create(Name, Opts) ->
    case supervisor:start_child(pq_sup, [self(), Name, Opts]) of
-      {ok, Pid} -> pq_queue_sup:client_api(Pid);
-      Error     -> Error
+      {ok, Pid} -> 
+         pq_queue_sup:client_api(Pid);
+      Error     -> 
+         Error
    end.
+
+%%
+%% close pool
+-spec(close/1 :: (pq()) -> ok).
+
+close(Pq) ->
+   gen_server:call(Pq, close, infinity).
 
 %%
 %% lease worker
@@ -81,7 +99,7 @@ lease(Pq, Timeout) ->
 -spec(release/2 :: (pq(), pid()) -> ok | {error, any()}).
 
 release(Pq, Pid) ->
-   gen_server:call(Pq, {release, Pid}).
+   gen_server:call(Pq, {release, Pid}, infinity).
 
 
 %%

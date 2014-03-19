@@ -9,6 +9,20 @@
 ##
 .PHONY: test rel deps all pkg
 
+## application name
+ROOT = `pwd`
+PREFIX ?= /usr/local
+APP ?= $(notdir $(CURDIR))
+ARCH = $(shell uname -m)
+PLAT = $(shell uname -s)
+TAG  = ${ARCH}.${PLAT}
+TEST?= priv/${APP}.benchmark
+S3   =
+
+## root path to benchmark framework
+BB     = ../basho_bench
+SSHENV = /tmp/ssh-agent.conf
+ 
 ## erlang flags
 EFLAGS = \
 	-name ${APP}@127.0.0.1 \
@@ -20,14 +34,6 @@ EFLAGS = \
 	-kernel inet_dist_listen_max 32199 \
 	+P 1000000 \
 	+K true +A 160 -sbt ts
-
-## application name
-ROOT = `pwd`
-PREFIX ?= /usr/local
-APP ?= $(notdir $(CURDIR))
-ARCH = $(shell uname -m)
-PLAT = $(shell uname -s)
-TAG  = ${ARCH}.${PLAT}
 
 ## application release
 ifeq ($(wildcard rel/reltool.config),) 
@@ -67,6 +73,8 @@ deps:
 clean:
 	@./rebar clean ; \
 	rm -rf test.*-temp-data ; \
+	rm -rf tests ; \
+	rm -rf log ; \
 	rm -f  *.${TAG}.tgz ; \
 	rm -f  *.${TAG}.bundle
 
@@ -94,8 +102,32 @@ pkg: rel/deploy.sh rel
 	printf  "${BUNDLE_FREE}" >> ${PKG} ; \
 	cat  ${TAR}              >> ${PKG} ; \
 	chmod ugo+x  ${PKG}
+
+${PKG}: pkg
+
+s3: ${PKG}
+	aws s3 cp ${PKG} ${S3}/${APP}-latest${VARIANT}.${TAG}.bundle
+
 endif
 
+##
+## deploy
+##
+ifneq (${host},)
+${SSHENV}:
+	ssh-agent -s > ${SSHENV}
+
+node: ${SSHENV}
+	. ${SSHENV} ;\
+	k=`basename ${pass}` ;\
+	l=`ssh-add -l | grep $$k` ;\
+	if [ -z "$$l" ] ; then \
+		ssh-add ${pass} ;\
+	fi ;\
+	rsync -cav --rsh=ssh --progress ${PKG} ${host}:${PKG} ;\
+	ssh -t ${host} "sudo sh ./${PKG}"
+
+endif
 
 ##
 ## debug
@@ -103,11 +135,10 @@ endif
 run:
 	@erl ${EFLAGS}
 
-# TODO:
-# benchmark:
-#         $(BB)/basho_bench -N bb@127.0.0.1 -C nocookie priv/${id}.benchmark
-#         $(BB)/priv/summary.r -i tests/current
-#         open tests/current/summary.png
+benchmark:
+	$(BB)/basho_bench -N bb@127.0.0.1 -C nocookie ${TEST}
+	$(BB)/priv/summary.r -i tests/current
+	open tests/current/summary.png
 
 ifneq (${REL},)
 start: 

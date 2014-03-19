@@ -61,6 +61,7 @@ start_link(Sup, Owner, Name, Opts) ->
    gen_server:start_link({local, Name}, ?MODULE, [Sup, Owner, Opts], []).
 
 init([Sup, Owner, Opts]) ->
+   % @todo: use monitor to "stop normally"
    _ = erlang:link(Owner),
    {ok, init(Opts, #leader{})}.
 
@@ -205,6 +206,9 @@ handle_call({ioctl, factory, Pid}, _Tx, S) ->
 
 handle_call({ioctl, worker}, _Tx, S) ->
    {reply, {ok, S#leader.worker}, S};
+
+handle_call(close, _Tx, S) ->
+   {stop, normal, ok, S};
 
 %%
 %%

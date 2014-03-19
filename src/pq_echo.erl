@@ -15,31 +15,28 @@
 %%   limitations under the License.
 %%
 %% @description
-%%   root supervisor
--module(pq_sup).
--behaviour(supervisor).
+%%   echo example worker
+-module(pq_echo).
 
 -export([
-   start_link/0,
-   init/1
+   start_link/1, 
+   init/2
 ]).
 
-%%
--define(CHILD(Type, I),            {I,  {I, start_link,   []}, transient, 30000, Type, dynamic}).
--define(CHILD(Type, I, Args),      {I,  {I, start_link, Args}, transient, 30000, Type, dynamic}).
--define(CHILD(Type, ID, I, Args),  {ID, {I, start_link, Args}, transient, 30000, Type, dynamic}).
+start_link(Queue) ->
+    proc_lib:start_link(?MODULE, init, [self(), Queue]).
 
+init(Parent, _Queue) ->
+   proc_lib:init_ack(Parent, {ok, self()}),
+   loop().
 
-%%
-%%
-start_link() ->
-   supervisor:start_link({local, ?MODULE}, ?MODULE, []).
-   
-init([]) ->   
-   {ok,
-      {
-         {simple_one_for_one, 60, 600},
-         [?CHILD(supervisor, pq_queue_sup)]
-      }
-   }.
+loop() ->
+   receive
+      {Pid, exit} ->
+         Pid ! exit;
+      {Pid,  Msg} ->
+         Pid ! Msg,
+         loop()
+   end.
+
 

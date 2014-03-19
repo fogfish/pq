@@ -1,12 +1,8 @@
 {application, pq,
    [
       {description, "process queue - unit-of-work"},
-      {vsn,         "2.0.0"},
-      {modules,     [
-         pq,
-         pq_sup,
-         pq_app
-      ]},
+      {vsn,         "2.1.0"},
+      {modules,     []},
       {registered,  []},
       {applications,[
          kernel,

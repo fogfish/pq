@@ -23,39 +23,34 @@
 %%
 %%
 new(_Id) ->
-   lager:set_loglevel(lager_console_backend, basho_bench_config:get(log_level, info)),
-   case erlang:whereis(benq) of
-      undefined -> 
-         application:start(pq),
-         pq:start_link(benq, config());
-      Pid ->
-         {ok, Pid}
-   end.
-
-config() ->
-   maybe_opt_config([
-      {type,     basho_bench_config:get(pq_type, disposable)},
-      {capacity, basho_bench_config:get(pq_capacity, 10)},
-      {worker,   fun worker/0}
-   ]).
-
-maybe_opt_config(Cfg) ->
-   case basho_bench_config:get(pq_ondemand, false) of
-      false -> Cfg;
-      true  -> [ondemand | Cfg]
-   end.
-
+   try
+      lager:set_loglevel(lager_console_backend, basho_bench_config:get(log_level, info)),
+      init()
+   catch _:Err ->
+      lager:error("pq failed: ~p", [Err]),
+      halt(1)
+   end,
+   {ok, basho_bench_config:get(pq_type, disposable)}.
 %%
 %%
-run(lease, _KeyGen, _ValGen, S) ->
+run(lease, _KeyGen, _ValGen, disposable) ->
    try
       {ok, Pid} = pq:lease(benq, 20000),
-      ping(Pid, ping),
+      _  = ping(Pid, exit),
       ok = pq:release(benq, Pid),
-      {ok, S}
+      {ok, disposable}
    catch _:_Reason ->
-      %io:format("pq crash: ~p ~p~n", [Reason, erlang:get_stacktrace()]),
-      {error, crash, S}
+      {error, crash, disposable}
+   end;
+
+run(lease, _KeyGen, _ValGen, reusable) ->
+   try
+      {ok, Pid} = pq:lease(benq, 20000),
+      _  = ping(Pid, ping),
+      ok = pq:release(benq, Pid),
+      {ok, reusable}
+   catch _:_Reason ->
+      {error, crash, reusable}
    end;
 
 run(suspend, _KeyGen, _ValGen, S) ->
@@ -65,34 +60,33 @@ run(suspend, _KeyGen, _ValGen, S) ->
       ok = pq:resume(benq),
       {ok, S}
    catch _:_Reason ->
-      %io:format("pq crash: ~p ~p~n", [Reason, erlang:get_stacktrace()]),
       {error, crash, S}
    end.      
 
+%%%----------------------------------------------------------------------------   
+%%%
+%%% private
+%%%
+%%%----------------------------------------------------------------------------   
+
 %%
-%% artificial queue worker
-worker() ->
-   Rnd = random:seed(erlang:now()),
-   Lc  = basho_bench_config:get(pq_lifecycle, 100),
-   worker_loop(basho_bench_config:get(pq_type, disposable), Lc).
-
-worker_loop(disposable, Lc) ->
-   receive
-      {Pid,  Msg} ->
-         timer:sleep(random:uniform(Lc)),
-         Pid ! Msg
-   end;
-
-worker_loop(reusable, Lc) ->
-   receive
-      {Pid, exit} ->
-         Pid ! exit;
-      {Pid,  Msg} ->
-         timer:sleep(random:uniform(Lc)),
-         Pid ! Msg,
-         worker_loop(reusable, Lc)
+%%
+init() ->
+   case application:start(pq) of
+      {error, {already_started, _}} ->
+         ok;
+      ok ->
+         Type     = basho_bench_config:get(pq_type, disposable),
+         Capacity = basho_bench_config:get(pq_capacity, 10),
+         Config0  = [{type, Type}, {capacity, Capacity}, {worker, pq_echo}],
+         Config   = case basho_bench_config:get(pq_ondemand, false) of
+            false -> Config0;
+            true  -> [ondemand | Config0]
+         end,
+         pq:start_link(benq, Config)
    end.
 
+%%
 %%
 ping(Pid, Msg) ->
    Pid ! {self(), Msg},

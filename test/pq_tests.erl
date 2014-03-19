@@ -1,10 +1,10 @@
 -module(pq_tests).
 -include_lib("eunit/include/eunit.hrl").
 
--define(TEST_DISPOSABLE,          true).
--define(TEST_DISPOSABLE_ONDEMAND, true).
--define(TEST_REUSABLE,            true).
--define(TEST_REUSABLE_ONDEMAND,   true).
+-define(TEST_DISPOSABLE,          [{type, disposable},{capacity,2},{worker,pq_echo}]).
+-define(TEST_DISPOSABLE_ONDEMAND, [{type, disposable},{capacity,2},{worker,pq_echo},ondemand]).
+-define(TEST_REUSABLE,            [{type, reusable},  {capacity,2},{worker,pq_echo}]).
+-define(TEST_REUSABLE_ONDEMAND,   [{type, reusable},  {capacity,2},{worker,pq_echo},ondemand]).
 
 %%
 %% disposable q
@@ -12,27 +12,15 @@
 dq_test_() ->
    {
       setup,
-      fun dq_init/0,
-      fun dq_free/1,
+      fun() -> q_init(?TEST_DISPOSABLE) end,
+      fun q_free/1,
       [
-         {"lease/release",   fun() -> q_lease_release(dq) end}
-        ,{"out-of-capacity", fun() -> q_ooc(dq) end}
-        ,{"lease timeout",   fun() -> q_lease_timeout(dq) end}
-        ,{"suspend/resume",  fun() -> q_suspend_resume(dq) end}
+         {"lease/release",   fun q_lease_release/0}
+        ,{"out-of-capacity", fun q_ooc/0}
+        ,{"lease timeout",   fun q_lease_timeout/0}
+        ,{"suspend/resume",  fun q_suspend_resume/0}
       ]
    }.
-
-dq_init() ->
-   _         = application:start(pq),
-   {ok, Pid} = pq:start_link(dq, [
-      {type,   disposable},
-      {capacity,        2}, 
-      {worker,    pq_echo}
-   ]).
-
-dq_free({ok, Pid}) ->
-   erlang:unlink(Pid),
-   erlang:exit(Pid, shutdown).
 -endif.
 
 %%
@@ -41,28 +29,15 @@ dq_free({ok, Pid}) ->
 dq_ondemand_test_() ->
    {
       setup,
-      fun dq_ondemand_init/0,
-      fun dq_ondemand_free/1,
+      fun() -> q_init(?TEST_DISPOSABLE_ONDEMAND) end,
+      fun q_free/1,      
       [
-         {"lease/release",   fun() -> q_lease_release(ddq) end}
-        ,{"out-of-capacity", fun() -> q_ooc(ddq) end}
-        ,{"lease timeout",   fun() -> q_lease_timeout(ddq) end}
-        ,{"suspend/resume",  fun() -> q_suspend_resume(ddq) end}
+         {"lease/release",   fun q_lease_release/0}
+        ,{"out-of-capacity", fun q_ooc/0}
+        ,{"lease timeout",   fun q_lease_timeout/0}
+        ,{"suspend/resume",  fun q_suspend_resume/0}
       ]
    }.
-
-dq_ondemand_init() ->
-   _         = application:start(pq),
-   {ok, Pid} = pq:start_link(ddq, [
-      {type,   disposable},
-      {capacity,        2}, 
-      {worker,    pq_echo},
-      ondemand
-   ]).
-
-dq_ondemand_free({ok, Pid}) ->
-   erlang:unlink(Pid),
-   erlang:exit(Pid, shutdown).
 -endif.
 
 %%
@@ -71,27 +46,15 @@ dq_ondemand_free({ok, Pid}) ->
 reusable_test_() ->
    {
       setup,
-      fun reusable_init/0,
-      fun reusable_free/1,
+      fun() -> q_init(?TEST_REUSABLE) end,
+      fun q_free/1,      
       [
-         {"lease/release",   fun() -> q_lease_release(rq) end}
-        ,{"out-of-capacity", fun() -> q_ooc(rq) end}
-        ,{"lease timeout",   fun() -> q_lease_timeout(rq) end}
-        ,{"suspend/resume",  fun() -> q_suspend_resume(rq) end}
+         {"lease/release",   fun q_lease_release/0}
+        ,{"out-of-capacity", fun q_ooc/0}
+        ,{"lease timeout",   fun q_lease_timeout/0}
+        ,{"suspend/resume",  fun q_suspend_resume/0}
       ]
    }.
-
-reusable_init() ->
-   _         = application:start(pq),
-   {ok, Pid} = pq:start_link(rq, [
-      {type,     reusable},
-      {capacity,        2}, 
-      {worker,    pq_echo}
-   ]).
-
-reusable_free({ok, Pid}) ->
-   erlang:unlink(Pid),
-   erlang:exit(Pid, shutdown).
 -endif.
 
 %%
@@ -100,28 +63,15 @@ reusable_free({ok, Pid}) ->
 reusable_ondemand_test_() ->
    {
       setup,
-      fun reusable_ondemand_init/0,
-      fun reusable_ondemand_free/1,
+      fun() -> q_init(?TEST_REUSABLE_ONDEMAND) end,
+      fun q_free/1,      
       [
-         {"lease/release",   fun() -> q_lease_release(drq) end}
-        ,{"out-of-capacity", fun() -> q_ooc(drq) end}
-        ,{"lease timeout",   fun() -> q_lease_timeout(drq) end}
-        ,{"suspend/resume",  fun() -> q_suspend_resume(drq) end}
+         {"lease/release",   fun q_lease_release/0}
+        ,{"out-of-capacity", fun q_ooc/0}
+        ,{"lease timeout",   fun q_lease_timeout/0}
+        ,{"suspend/resume",  fun q_suspend_resume/0}
       ]
    }.
-
-reusable_ondemand_init() ->
-   _         = application:start(pq),
-   {ok, Pid} = pq:start_link(drq, [
-      {type,     reusable},
-      {capacity,        2}, 
-      {worker,    pq_echo},
-      ondemand
-   ]).
-
-reusable_ondemand_free({ok, Pid}) ->
-   erlang:unlink(Pid),
-   erlang:exit(Pid, shutdown).
 -endif.
 
 %%%------------------------------------------------------------------
@@ -130,33 +80,42 @@ reusable_ondemand_free({ok, Pid}) ->
 %%%
 %%%------------------------------------------------------------------
 
-q_lease_release(Q) ->
-   error_logger:error_msg("~n~n[~p] lease/release", [Q]),
-   lease_release(Q, 10),
+q_init(Spec) ->
+   _       = application:start(pq),
+   {ok, _} = pq:create(tq, Spec).
+
+q_free(_) -> 
+   pq:close(tq),
+   ok.
+
+
+q_lease_release() ->
+   error_logger:error_msg("~n~n[~p] lease/release", [tq]),
+   lease_release(tq, 10),
    erlang:yield().
 
-q_ooc(Q) ->
-   error_logger:error_msg("~n~n[~p] out-of-capacity", [Q]),
-   spawn(fun() -> lease_release(Q, 1000) end),
-   spawn(fun() -> lease_release(Q, 1000) end),
+q_ooc() ->
+   error_logger:error_msg("~n~n[~p] out-of-capacity", [tq]),
+   spawn(fun() -> lease_release(tq, 1000) end),
+   spawn(fun() -> lease_release(tq, 1000) end),
    timer:sleep(100),
-   lease_release(Q, 10),
+   lease_release(tq, 10),
    timer:sleep(1000). %% ensure that queue is empty
 
-q_lease_timeout(Q) ->
-   error_logger:error_msg("~n~n[~p] lease timeout", [Q]),
-   spawn(fun() -> lease_release(Q, 1000) end),
-   spawn(fun() -> lease_release(Q, 1000) end),
+q_lease_timeout() ->
+   error_logger:error_msg("~n~n[~p] lease timeout", [tq]),
+   spawn(fun() -> lease_release(tq, 1000) end),
+   spawn(fun() -> lease_release(tq, 1000) end),
    timer:sleep(100),
-   {'EXIT', _} = (catch lease_release(Q, 10, 100)),
+   {'EXIT', _} = (catch lease_release(tq, 10, 100)),
    timer:sleep(1000). %% ensure that queue is empty
 
-q_suspend_resume(Q) ->
-   error_logger:error_msg("~n~n[~p] suspend/resume", [Q]),
-   spawn(fun() -> suspend_resume(Q, 1000) end),
+q_suspend_resume() ->
+   error_logger:error_msg("~n~n[~p] suspend/resume", [tq]),
+   spawn(fun() -> suspend_resume(tq, 1000) end),
    timer:sleep(100),
-   lease_release(Q, 10),
-   timer:sleep(1000). %% ensure that queue is empty
+   lease_release(tq, 10),
+   timer:sleep(1200). %% ensure that queue is empty
 
 
 

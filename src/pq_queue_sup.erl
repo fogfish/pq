@@ -28,31 +28,19 @@
 %%
 -define(CHILD(Type, I),            {I,  {I, start_link,   []}, permanent, 30000, Type, dynamic}).
 -define(CHILD(Type, I, Args),      {I,  {I, start_link, Args}, permanent, 30000, Type, dynamic}).
--define(CHILD(Type, I, F, Args),   {I,  {I, F,          Args}, permanent, 30000, Type, dynamic}).
+-define(CHILD(Type, ID, I, Args),  {ID, {I, start_link, Args}, permanent, 30000, Type, dynamic}).
 
-%%
+%% 
 %%
 start_link(Owner, Name, Opts) ->
+   {worker, Worker} = lists:keyfind(worker, 1, Opts),
    {ok, Sup} = supervisor:start_link(?MODULE, [Owner, Name, Opts]),
-   %% resolve leader pid and start worker factory
    Leader    = child(Sup, pq_leader),
-   {ok, Pid} = case lists:keyfind(worker, 1, Opts) of
-      {worker, {Mod, Fun, Args}} -> 
-         supervisor:start_child(Sup, 
-            ?CHILD(supervisor, pq_worker_sup, Fun, [{Mod, [Leader | Args]}])
-         );
-      {worker, {Mod, Args}} -> 
-         supervisor:start_child(Sup, 
-            ?CHILD(supervisor, pq_worker_sup, [{Mod, [Leader | Args]}])
-         );
-      {worker, Mod} when is_atom(Mod) ->
-         supervisor:start_child(Sup, 
-            ?CHILD(supervisor, pq_worker_sup, [{Mod, [Leader]}])
-         )
-   end,
-   ok = pq_leader:ioctl(Leader, {factory, Pid}),
+   {ok, Pid} = supervisor:start_child(Sup, 
+      ?CHILD(supervisor, pq_worker_sup, [Leader, Opts, Worker])
+   ),
+   ok = pq_leader:ioctl(Leader, {factory, Pid}),   
    {ok, Sup}.
-     
 
 init([Owner, Name, Opts]) ->   
    {ok,

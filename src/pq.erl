@@ -54,6 +54,8 @@ start() ->
 %%   {capacity,  integer()} - max number of workers
 %%   {linger,    integer()} - max number of delayed lease requests
 %%   ondemand               - worker pre-allocation strategy
+%%   external               - life cycle is managed by external client 
+%%                            (worker cannot release itself)
 -spec(start_link/2 :: (atom(), list()) -> {ok, pid()} | {error, any()}).
 
 start_link(Name, Opts) ->

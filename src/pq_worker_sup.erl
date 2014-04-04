@@ -20,26 +20,38 @@
 -behaviour(supervisor).
 
 -export([
-   start_link/1,
+   start_link/3,
    init/1
 ]).
 
 %%
 -define(CHILD(Type, I),            {I,  {I, start_link,   []}, transient, 30000, Type, dynamic}).
 -define(CHILD(Type, I, Args),      {I,  {I, start_link, Args}, transient, 30000, Type, dynamic}).
--define(CHILD(Type, ID, I, Args),  {ID, {I, start_link, Args}, transient, 30000, Type, dynamic}).
+-define(CHILD(Type, I, F, A),      {I,  {I,          F,    A}, transient, 30000, Type, dynamic}).
 
 %%
 %%
-start_link({Mod, Opts}) ->
-   supervisor:start_link(?MODULE, [Mod, Opts]).
+start_link(Leader, Opts, {Mod, Fun, Args}) -> 
+   supervisor:start_link(?MODULE, [Mod, Fun, args(Leader, Opts, Args)]);
+start_link(Leader, Opts, {Mod, Args}) ->
+   supervisor:start_link(?MODULE, [Mod, start_link, args(Leader, Opts, Args)]);
+start_link(Leader, Opts, Mod) ->
+   supervisor:start_link(?MODULE, [Mod, start_link, args(Leader, Opts, [])]).
 
-init([Mod, Opts]) ->
+init([Mod, Fun, Args]) ->
    {ok,
       {
          {simple_one_for_one, 10, 60},
          [
-            ?CHILD(worker, Mod, Opts)
+            ?CHILD(worker, Mod, Fun, Args)
          ]
       }
    }.
+
+%%
+%%  
+args(Leader, Opts, Args) ->
+   case proplists:get_value(external, Opts) of
+      true -> Args;
+      _    -> [Leader | Args]
+   end.

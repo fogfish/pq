@@ -39,7 +39,7 @@ start_link(Owner, Name, Opts) ->
    {ok, Pid} = case lists:keyfind(worker, 1, Opts) of
       {worker, {Mod, Fun, Args}} -> 
          supervisor:start_child(Sup, 
-            ?CHILD(supervisor, pq_worker_sup, [{Mod, [Leader | Args]}])
+            ?CHILD(supervisor, pq_worker_sup, Fun, [{Mod, [Leader | Args]}])
          );
       {worker, {Mod, Args}} -> 
          supervisor:start_child(Sup, 

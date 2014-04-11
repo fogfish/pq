@@ -26,6 +26,7 @@
 
 -export([
    start/0,
+   start_link/1, 
    start_link/2, 
    create/1,
    create/2,
@@ -56,7 +57,11 @@ start() ->
 %%   ondemand               - worker pre-allocation strategy
 %%   external               - life cycle is managed by external client 
 %%                            (worker cannot release itself)
+-spec(start_link/1 :: (list()) -> {ok, pid()} | {error, any()}).
 -spec(start_link/2 :: (atom(), list()) -> {ok, pid()} | {error, any()}).
+
+start_link(Opts) ->
+   pq_queue_sup:start_link(self(), undefined, Opts).
 
 start_link(Name, Opts) ->
    pq_queue_sup:start_link(self(), Name, Opts).

@@ -21,7 +21,7 @@
 -include("pq.hrl").
 
 -export([
-   start_link/4, 
+   start_link/2, 
    % gen_server
    init/1, 
    terminate/2,
@@ -36,6 +36,7 @@
 -record(leader, {
    type             :: disposable | reusable,
    factory          :: pid(),     % worker factory
+   owner    = undefined :: pid(), % owner process
    linger   = inf   :: integer(), % max number of delayed requests   
    capacity = 0     :: integer(), % worker queue capacity (remaining workers)
    size     = 0     :: integer(), % worker queue size     (max number of workers)
@@ -54,15 +55,15 @@
 
 %%
 %%
-start_link(Sup, Owner, undefined, Opts) ->
-   gen_server:start_link(?MODULE, [Sup, Owner, Opts], []);
+start_link(undefined, Opts) ->
+   gen_server:start_link(?MODULE, [Opts], []);
 
-start_link(Sup, Owner, Name, Opts) ->
-   gen_server:start_link({local, Name}, ?MODULE, [Sup, Owner, Opts], []).
+start_link(Name, Opts) ->
+   gen_server:start_link({local, Name}, ?MODULE, [Opts], []).
 
-init([Sup, Owner, Opts]) ->
-   % @todo: use monitor to "stop normally"
-   _ = erlang:link(Owner),
+init([Opts]) ->
+   {owner, Pid} = lists:keyfind(owner, 1, Opts),
+   _ = erlang:monitor(process, Pid),
    {ok, init(Opts, #leader{})}.
 
 init([{capacity, X} | Opts], S)
@@ -222,6 +223,9 @@ handle_cast(_, S) ->
 
 %%
 %%
+handle_info({'DOWN', _, _, Owner, _Reason}, #leader{owner=Owner}=S) ->
+   {stop, normal, S};
+
 handle_info({'DOWN', _, _, _Pid, _Reason}, #leader{inactive=true}=S) ->
    % queue is not active, do not recover worker
    {noreply, S};

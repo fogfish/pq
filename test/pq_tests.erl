@@ -82,7 +82,7 @@ reusable_ondemand_test_() ->
 
 q_init(Spec) ->
    _       = application:start(pq),
-   {ok, _} = pq:create(tq, Spec).
+   {ok, _} = pq:start_link(tq, Spec).
 
 q_free(_) -> 
    pq:close(tq),

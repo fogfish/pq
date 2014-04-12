@@ -20,7 +20,7 @@
 -behaviour(supervisor).
 
 -export([
-   start_link/3, 
+   start_link/2, 
    init/1,
    client_api/1
 ]).
@@ -32,9 +32,9 @@
 
 %% 
 %%
-start_link(Owner, Name, Opts) ->
+start_link(Name, Opts) ->
    {worker, Worker} = lists:keyfind(worker, 1, Opts),
-   {ok, Sup} = supervisor:start_link(?MODULE, [Owner, Name, Opts]),
+   {ok, Sup} = supervisor:start_link(?MODULE, [Name, Opts]),
    Leader    = child(Sup, pq_leader),
    {ok, Pid} = supervisor:start_child(Sup, 
       ?CHILD(supervisor, pq_worker_sup, [Leader, Opts, Worker])
@@ -42,13 +42,13 @@ start_link(Owner, Name, Opts) ->
    ok = pq_leader:ioctl(Leader, {factory, Pid}),   
    {ok, Sup}.
 
-init([Owner, Name, Opts]) ->   
+init([Name, Opts]) ->   
    {ok,
       {
          {one_for_all, 0, 1},
          [
             %% queue leader
-            ?CHILD(worker, pq_leader, [self(), Owner, Name, Opts])
+            ?CHILD(worker, pq_leader, [Name, Opts])
          ]
       }
    }.

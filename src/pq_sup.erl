@@ -25,9 +25,9 @@
 ]).
 
 %%
--define(CHILD(Type, I),            {I,  {I, start_link,   []}, transient, 30000, Type, dynamic}).
--define(CHILD(Type, I, Args),      {I,  {I, start_link, Args}, transient, 30000, Type, dynamic}).
--define(CHILD(Type, ID, I, Args),  {ID, {I, start_link, Args}, transient, 30000, Type, dynamic}).
+-define(CHILD(Type, I),            {I,  {I, start_link,   []}, temporary, 30000, Type, dynamic}).
+-define(CHILD(Type, I, Args),      {I,  {I, start_link, Args}, temporary, 30000, Type, dynamic}).
+-define(CHILD(Type, ID, I, Args),  {ID, {I, start_link, Args}, temporary, 30000, Type, dynamic}).
 
 
 %%

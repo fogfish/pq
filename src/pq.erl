@@ -28,8 +28,6 @@
    start/0,
    start_link/1, 
    start_link/2, 
-   create/1,
-   create/2,
    close/1,
    lease/1, 
    lease/2, 
@@ -61,24 +59,12 @@ start() ->
 -spec(start_link/2 :: (atom(), list()) -> {ok, pid()} | {error, any()}).
 
 start_link(Opts) ->
-   pq_queue_sup:start_link(self(), undefined, Opts).
+   start_link(undefined, Opts).
 
 start_link(Name, Opts) ->
-   pq_queue_sup:start_link(self(), Name, Opts).
-
-%%
-%% create pool of processes
-%% See start_link opts
--spec(create/1 :: (list()) -> {ok, pid()} | {error, any()}).
--spec(create/2 :: (atom(), list()) -> {ok, pid()} | {error, any()}).
-
-create(Opts) ->
-   create(undefined, Opts).
-
-create(Name, Opts) ->
-   case supervisor:start_child(pq_sup, [self(), Name, Opts]) of
-      {ok, Pid} -> 
-         pq_queue_sup:client_api(Pid);
+   case supervisor:start_child(pq_sup, [Name, [{owner, self()} |Opts]]) of
+      {ok, Sup} ->
+         pq_queue_sup:client_api(Sup);
       Error     -> 
          Error
    end.

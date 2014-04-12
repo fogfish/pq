@@ -64,7 +64,7 @@ start_link(Opts) ->
 start_link(Name, Opts) ->
    case supervisor:start_child(pq_sup, [Name, [{owner, self()} |Opts]]) of
       {ok, Sup} ->
-         pq_queue_sup:client_api(Sup);
+         pq_queue_sup:link_client_api(Sup);
       Error     -> 
          Error
    end.

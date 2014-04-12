@@ -22,7 +22,7 @@
 -export([
    start_link/2, 
    init/1,
-   client_api/1
+   link_client_api/1
 ]).
 
 %%
@@ -62,6 +62,8 @@ child(Sup, Id) ->
 
 %%
 %% return pid of client api
-client_api(Sup) ->
-   {ok, child(Sup, pq_leader)}.
+link_client_api(Sup) ->
+   Pid = child(Sup, pq_leader),
+   erlang:link(Pid),
+   {ok, Pid}.
 

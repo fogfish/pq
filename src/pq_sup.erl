@@ -38,8 +38,8 @@ start_link() ->
 init([]) ->   
    {ok,
       {
-         {simple_one_for_one, 60, 600},
-         [?CHILD(supervisor, pq_queue_sup)]
+         {one_for_one, 60, 600},
+         []
       }
    }.
 

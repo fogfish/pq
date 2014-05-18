@@ -1,4 +1,8 @@
-{code_paths, ["./ebin", "./deps/datum"]}.
+{code_paths, [
+   "./ebin"
+  ,"./deps/datum"
+  ,"./deps/eep"
+]}.
 {log_level,    info}.
 {report_interval, 1}.
 {driver,       pq_benchmark}.
@@ -8,14 +12,18 @@
 %% workload
 {mode,            max}.
 {duration,          1}.
-{concurrent,      300}.
+{concurrent,       10}.
+% {concurrent,      300}.
 
 {operations, [
-   {lease,   1}
-   %,{suspend,      1}
+   {request,  100}
+  % ,{crash,     10}
+  %  {lease,    50}
+  % ,{release,  50}
+
+   {do, 1}
 ]}.
 
-%{pq_type,  disposable}. % worker use pattern
+% {pq_type,  disposable}. % worker use pattern
 {pq_type,    reusable}. % worker use pattern
 {pq_capacity,    1000}. % length of queue
-%{pq_ondemand,    true}.

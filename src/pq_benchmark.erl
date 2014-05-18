@@ -30,38 +30,64 @@ new(_Id) ->
       lager:error("pq failed: ~p", [Err]),
       halt(1)
    end,
-   {ok, basho_bench_config:get(pq_type, disposable)}.
+   {ok, q:new()}.
+
 %%
 %%
-run(lease, _KeyGen, _ValGen, disposable) ->
+run(spawn, _KeyGen, _ValGen, Type) ->
+   %% uses by-pass pq, uses erlang spawn
    try
-      {ok, Pid} = pq:lease(benq, 20000),
+      {ok, Pid} = pq_echo:start(self()),
+      % Pid = spawn(
+      %    fun() -> 
+      %       receive
+      %          {Pid, exit} -> Pid ! exit
+      %       end
+      %    end
+      % ),
       _  = ping(Pid, exit),
-      ok = pq:release(benq, Pid),
       {ok, disposable}
-   catch _:_Reason ->
-      {error, crash, disposable}
+   catch _:Reason ->
+      {error, Reason, Type}
    end;
 
-run(lease, _KeyGen, _ValGen, reusable) ->
-   try
-      {ok, Pid} = pq:lease(benq, 20000),
-      _  = ping(Pid, ping),
-      ok = pq:release(benq, Pid),
-      {ok, reusable}
-   catch _:_Reason ->
-      {error, crash, reusable}
+run(request, _KeyGen, _ValGen, State) ->
+   case pq:lease(benq) of
+      {error, ebusy} ->
+         {error, ebusy, State};
+      Ref ->
+         _ = ping(pq:pid(Ref), ping),
+         pq:release(Ref),
+         {ok, State}
    end;
 
-run(suspend, _KeyGen, _ValGen, S) ->
-   try
-      ok = pq:suspend(benq),
-      timer:sleep(10000),
-      ok = pq:resume(benq),
-      {ok, S}
-   catch _:_Reason ->
-      {error, crash, S}
-   end.      
+run(lease, _KeyGen, _ValGen, State) ->
+   case pq:lease(benq) of
+      {error, ebusy} ->
+         {error, ebusy, State};
+      Ref ->
+         _ = ping(pq:pid(Ref), ping),
+         {ok, q:enq(Ref, State)}
+   end;
+
+run(release, _KeyGen, _ValGen, State) ->
+   case q:length(State) of
+      0 ->
+         {error, empty, State};
+      _ ->
+         pq:release(q:head(State)),
+         {ok, q:tail(State)}
+   end;
+
+run(crash, _KeyGen, _ValGen, State) ->
+   case pq:lease(benq) of
+      {error, ebusy} ->
+         {error, ebusy, State};
+      Ref ->
+         _ = ping(pq:pid(Ref), exit),
+         pq:release(Ref),
+         {ok, State}
+   end.
 
 %%%----------------------------------------------------------------------------   
 %%%
@@ -78,12 +104,12 @@ init() ->
       ok ->
          Type     = basho_bench_config:get(pq_type, disposable),
          Capacity = basho_bench_config:get(pq_capacity, 10),
-         Config0  = [{type, Type}, {capacity, Capacity}, {worker, pq_echo}],
-         Config   = case basho_bench_config:get(pq_ondemand, false) of
-            false -> Config0;
-            true  -> [ondemand | Config0]
-         end,
-         pq:start_link(benq, Config)
+         % spawn(fun() ->
+         %    eep:start_file_tracing("pqt"), 
+         %    timer:sleep(10000), 
+         %    eep:stop_tracing()
+         % end),
+         pq:start_link(benq, [{type, Type}, {capacity, Capacity}, {worker, pq_echo}])
    end.
 
 %%

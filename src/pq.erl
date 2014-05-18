@@ -25,20 +25,20 @@
 -include("pq.hrl").
 
 -export([
-   start/0,
-   start_link/1, 
-   start_link/2, 
-   close/1,
-   lease/1, 
-   lease/2, 
-   release/2,
-   suspend/1, 
-   resume/1,
-   worker/1
+   start/0
+  ,start_link/1 
+  ,start_link/2 
+  ,close/1
+  ,pid/1
+  ,lease/1 
+  ,release/1
+  ,suspend/1 
+  ,resume/1
 ]).
 
 %%
--type(pq() :: atom() | pid()).
+-type(pq()    :: atom() | pid()).
+-type(token() :: any()).
 
 %%
 %% start application
@@ -47,74 +47,68 @@ start() ->
 
 %%
 %% start pool of processes
+%%
 %% Options:
 %%   {worker,    atom() | {atom(), list()}} - worker specification
 %%   {type,      disposable | reusable} - worker type
 %%   {capacity,  integer()} - max number of workers
-%%   {linger,    integer()} - max number of delayed lease requests
-%%   ondemand               - worker pre-allocation strategy
-%%   external               - life cycle is managed by external client 
-%%                            (worker cannot release itself)
+%%   {ttl,       integer()} - worker process time to live (default infinity)
 -spec(start_link/1 :: (list()) -> {ok, pid()} | {error, any()}).
 -spec(start_link/2 :: (atom(), list()) -> {ok, pid()} | {error, any()}).
 
 start_link(Opts) ->
-   start_link(undefined, Opts).
+   pq_pool:start_link(Opts).
 
 start_link(Name, Opts) ->
-   case supervisor:start_child(pq_sup, [Name, [{owner, self()} |Opts]]) of
-      {ok, Sup} ->
-         pq_queue_sup:link_client_api(Sup);
-      Error     -> 
-         Error
-   end.
+   pq_pool:start_link(Name, Opts).
 
 %%
-%% close pool
+%% close pool and terminate all workers
 -spec(close/1 :: (pq()) -> ok).
 
 close(Pq) ->
-   gen_server:call(Pq, close, infinity).
+   pq_pool:close(Pq).
+
+%%
+%% return pid of worker process
+-spec(pid/1 :: (token()) -> pid()).
+
+pid(#pq{pid=Pid}) ->
+   Pid;
+pid({error, Reason}) ->
+   exit(Reason).
+
 
 %%
 %% lease worker
 -spec(lease/1 :: (pq()) -> {ok, pid()} | {error, any()}).
--spec(lease/2 :: (pq(), integer() | infinity) -> {ok, pid()} | {error, any()}).
 
 lease(Pq) ->
-   lease(Pq, infinity).
-
-lease(Pq, Timeout) ->
-   gen_server:call(Pq, {lease, Timeout}, Timeout).
+   pq_pool:lease(Pq).
 
 %%
 %% release worker
--spec(release/2 :: (pq(), pid()) -> ok | {error, any()}).
+-spec(release/1 :: (token()) -> ok).
 
-release(Pq, Pid) ->
-   gen_server:call(Pq, {release, Pid}, infinity).
-
+release(#pq{}=Tx) ->
+   pq_uow:release(Tx);
+release({error, Reason}) ->
+   exit(Reason);
+release(undefined) ->
+   ok.
 
 %%
-%% suspend queue, disable lease requests and terminate all workers
+%% suspend queue and terminate all workers
 -spec(suspend/1 :: (pq()) -> ok).
 
 suspend(Pq) ->
-   gen_server:call(Pq, suspend).
+   pq_pool:suspend(Pq).
 
 %%
 %% resume queues, enables lease requests and re-spawn workers
 -spec(resume/1 :: (pq()) -> ok).
 
 resume(Pq) ->
-   gen_server:call(Pq, resume).
-
-%%
-%% read queue worker specification
--spec(worker/1 :: (pq()) -> ok).
-
-worker(Pq) ->
-   pq_leader:ioctl(Pq, worker).
-
+   pq_pool:resume(Pq).
 
 

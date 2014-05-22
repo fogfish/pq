@@ -40,6 +40,7 @@
   ,release/2
   ,suspend/1
   ,resume/1
+  ,worker/1
 ]).
 
 -record(pool, {
@@ -123,6 +124,10 @@ suspend(Pool) ->
 resume(Pool) ->
    gen_fsm:send_event(Pool, resume).
 
+%%
+%%
+worker(Pool) ->
+   gen_fsm:sync_send_all_state_event(Pool, worker, infinity).
 
 %%%------------------------------------------------------------------
 %%%
@@ -231,6 +236,9 @@ handle_event(_Msg, Sid, State) ->
 
 %%
 %%
+handle_sync_event(worker, Tx, Sid, State) ->
+   {reply, State#pool.worker, Sid, State};
+
 handle_sync_event(_Msg, _Tx, Sid, State) ->
    {next_state, Sid, State}.
 

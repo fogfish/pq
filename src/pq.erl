@@ -30,6 +30,7 @@
   ,start_link/2 
   ,close/1
   ,pid/1
+  ,worker/1
   ,lease/1 
   ,release/1
   ,suspend/1 
@@ -78,6 +79,12 @@ pid(#pq{pid=Pid}) ->
 pid({error, Reason}) ->
    exit(Reason).
 
+%%
+%% return worker specification
+-spec(worker/1 :: (pq()) -> any()).
+
+worker(Pq) ->
+   pq_pool:worker(Pq).
 
 %%
 %% lease worker

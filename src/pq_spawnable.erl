@@ -54,6 +54,11 @@ handle_call({do, Fun, Args}, _Tx, State) ->
 
 %%
 %%
+handle_cast({do, Ref, Fun}, State) ->
+   _Result = (catch Fun()),
+   pq:release(Ref),
+   {noreply, State};
+
 handle_cast(_, State) ->
    {noreply, State}.
 

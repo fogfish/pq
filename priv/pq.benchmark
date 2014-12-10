@@ -11,19 +11,17 @@
 %%
 %% workload
 {mode,            max}.
-{duration,          1}.
-{concurrent,       10}.
-% {concurrent,      300}.
+{duration,          5}.
+% {concurrent,       10}.
+{concurrent,      300}.
 
 {operations, [
-   {request,  100}
+  % {request,  100}
   % ,{crash,     10}
-  %  {lease,    50}
-  % ,{release,  50}
-
-   {do, 1}
+  {do, 100}
 ]}.
 
 % {pq_type,  disposable}. % worker use pattern
-{pq_type,    reusable}. % worker use pattern
-{pq_capacity,    1000}. % length of queue
+% {pq_type,     reusable}. % worker use pattern
+{pq_type,    spawnable}. % worker use pattern
+{pq_capacity,      1000}. % length of queue

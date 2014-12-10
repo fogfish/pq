@@ -41,6 +41,7 @@
   ,suspend/1
   ,resume/1
   ,worker/1
+  ,ioctl/2
 ]).
 
 -record(pool, {
@@ -129,6 +130,11 @@ resume(Pool) ->
 worker(Pool) ->
    gen_fsm:sync_send_all_state_event(Pool, worker, infinity).
 
+%%
+%%
+ioctl(Pool, Req) ->
+   gen_fsm:sync_send_all_state_event(Pool, {ioctl, Req}, infinity).
+
 %%%------------------------------------------------------------------
 %%%
 %%% gen_fsm
@@ -137,7 +143,7 @@ worker(Pool) ->
 
 %%
 %%
-active(lease, Tx, #pool{wq=?NULL}=State) ->
+active(lease, _Tx, #pool{wq=?NULL}=State) ->
    {reply, {error, ebusy}, active, State};
 
 active(lease, Tx, State) ->
@@ -179,7 +185,7 @@ active(Msg, State) ->
 
 %%
 %%
-inactive(lease, Tx, State) ->
+inactive(lease, _Tx, State) ->
    {reply, {error, ebusy}, inactive, State};
 
 inactive(Msg, Tx, State) ->
@@ -236,7 +242,16 @@ handle_event(_Msg, Sid, State) ->
 
 %%
 %%
-handle_sync_event(worker, Tx, Sid, State) ->
+handle_sync_event({ioctl, capacity}, _Tx, Sid, #pool{size=N}=State) ->
+   {reply, N, Sid, State};
+
+handle_sync_event({ioctl, busy}, _Tx, Sid, #pool{wq=Q, size=N}=State) ->
+   {reply, N - q:length(Q), Sid, State};
+
+handle_sync_event({ioctl, free}, _Tx, Sid, #pool{wq=Q}=State) ->
+   {reply, q:length(Q), Sid, State};
+
+handle_sync_event(worker, _Tx, Sid, State) ->
    {reply, State#pool.worker, Sid, State};
 
 handle_sync_event(_Msg, _Tx, Sid, State) ->

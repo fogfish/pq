@@ -35,6 +35,7 @@
   ,release/1
   ,suspend/1 
   ,resume/1
+  ,ioctl/2
 ]).
 
 %%
@@ -88,6 +89,7 @@ worker(Pq) ->
 
 %%
 %% lease worker
+%% @todo: make infinity + attempts lease
 -spec(lease/1 :: (pq()) -> {ok, pid()} | {error, any()}).
 
 lease(Pq) ->
@@ -117,5 +119,16 @@ suspend(Pq) ->
 
 resume(Pq) ->
    pq_pool:resume(Pq).
+
+%%
+%% return property of process queue
+%%   * capacity  - return total queue capacity
+%%   * busy      - return number of occupied workers
+%%   * free      - return number of free workers
+-spec(ioctl/2 :: (pq(), atom()) -> any()).
+
+ioctl(Pq, Req) ->
+   pq_pool:ioctl(Pq, Req).
+
 
 

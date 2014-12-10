@@ -54,8 +54,9 @@ do(Pq, Fun, Timeout) ->
 
 do_(Pq, Fun) ->
    case pq:lease(Pq) of
-      {error, _} = Error ->
-         Error;
+      {error, ebusy} ->
+         erlang:yield(),
+         do_(Pq, Fun);
       Ref ->
          gen_server:cast(pq:pid(Ref), {do, Ref, Fun})
    end.

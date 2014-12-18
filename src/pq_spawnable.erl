@@ -45,19 +45,26 @@ terminate(_, _State) ->
 %%
 %%
 handle_call({do, Fun}, _Tx, State) ->
-   Result = (catch Fun()),
+   Result = Fun(),
    {reply, Result, State};
 
 handle_call({do, Fun, Args}, _Tx, State) ->
-   Result = (catch erlang:apply(Fun, Args)),
+   Result = erlang:apply(Fun, Args),
    {reply, Result, State}.
 
 %%
 %%
 handle_cast({do, Ref, Fun}, State) ->
-   _Result = (catch Fun()),
+   _Result = Fun(),
    pq:release(Ref),
    {noreply, State};
+
+handle_cast({do, Ref, Tx, Fun}, State) ->
+   Result = Fun(),
+   gen_server:reply(Tx, Result),
+   pq:release(Ref),
+   {noreply, State};
+
 
 handle_cast(_, State) ->
    {noreply, State}.

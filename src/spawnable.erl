@@ -8,6 +8,7 @@
   ,do/2
   ,do/3
   ,do_/2
+  ,do_/3
 ]).
 
 %%
@@ -51,13 +52,23 @@ do(Pq, Fun, Timeout) ->
 %%
 %% asynchronously evaluate functional object
 -spec(do_/2 :: (pid(), function()) -> ok).
+-spec(do_/3 :: (pid(), function(), boolean()) -> ok).
 
 do_(Pq, Fun) ->
+   do_(Pq, Fun, false).
+
+do_(Pq, Fun, Flag) ->
    case pq:lease(Pq) of
       {error, ebusy} ->
          erlang:yield(),
-         do_(Pq, Fun);
+         do_(Pq, Fun, Flag);
       Ref ->
-         gen_server:cast(pq:pid(Ref), {do, Ref, Fun})
+         case Flag of
+            false ->
+               gen_server:cast(pq:pid(Ref), {do, Ref, Fun});
+            true  ->
+               Tx = erlang:make_ref(),
+               gen_server:cast(pq:pid(Ref), {do, Ref, {self(), Tx}, Fun}),
+               Tx
+         end
    end.
-

@@ -89,8 +89,7 @@ worker(Pq) ->
 
 %%
 %% lease worker
-%% @todo: make infinity + attempts lease
--spec(lease/1 :: (pq()) -> {ok, pid()} | {error, any()}).
+-spec(lease/1  :: (pq()) -> {ok, pid()} | {error, any()}).
 
 lease(Pq) ->
    pq_pool:lease(Pq).

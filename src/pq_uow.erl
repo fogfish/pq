@@ -159,9 +159,10 @@ expired(Msg, State) ->
 %%
 %%
 handle_info({'DOWN', _Ref, _Type, _Pid, _Reason}, inuse, State) ->
-   %% client process dies
+   %% client process dies (worker state is nondeterministic)
+   _ = free_worker(State#fsm.pid),
    pq_pool:release(State#fsm.pool, self()),
-   {next_state, idle, State#fsm{client=undefined}};
+   {next_state, idle, State#fsm{client=undefined, pid=undefined}};
 
 handle_info({'EXIT', Pid, Reason}, idle, State) ->
    ?DEBUG("pq [uow]: ~p death of worker ~p due ~p~n", [State#fsm.pool, Pid, Reason]),      

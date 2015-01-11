@@ -35,7 +35,7 @@
   ,code_change/4
   % api
   ,close/1
-  ,lease/2
+  ,lease/3
   ,release/1
 ]).
 
@@ -86,8 +86,8 @@ close(Pid) ->
 
 %%
 %%
-lease(Pid, Tx) ->
-   gen_fsm:send_event(Pid, {lease, Tx}).
+lease(Pid, Tx, Opts) ->
+   gen_fsm:send_event(Pid, {lease, Tx, Opts}).
 
 %%
 %%
@@ -102,7 +102,7 @@ release(#pq{uow=Pid}=Ref) ->
 
 %%
 %%
-idle({lease, Tx}=Req, #fsm{pid=undefined}=State) ->
+idle({lease, Tx, _}=Req, #fsm{pid=undefined}=State) ->
    ?DEBUG("pq [uow]: ~p init worker ~p~n", [State#fsm.pool, State#fsm.worker]),      
    case init_worker(State#fsm.worker) of
       {ok, Pid} ->
@@ -114,8 +114,8 @@ idle({lease, Tx}=Req, #fsm{pid=undefined}=State) ->
          {next_state, idle, State}
    end;
 
-idle({lease, {Pid, _}=Tx}, State) ->
-   Ref = erlang:monitor(process, Pid),
+idle({lease, {Pid, _}=Tx, Opts}, State) ->
+   Ref = client_monitor(Pid, Opts),
    gen_server:reply(Tx, #pq{uow=self(), pid=State#fsm.pid}),
    {next_state, inuse, 
       State#fsm{
@@ -128,27 +128,27 @@ idle({release, _}, State) ->
 
 %%
 %%
-inuse({lease, Tx}, State) ->
+inuse({lease, Tx, _}, State) ->
    gen_server:reply(Tx, {error, ebusy}),
    {next_state, inuse, State};
 
-inuse({release, _}, #fsm{type=disposable}=State) ->
+inuse({release, _}, #fsm{type=disposable, client = Client}=State) ->
    ?DEBUG("pq [uow]: ~p free worker ~p~n", [State#fsm.pool, State#fsm.pid]),      
-   _ = erlang:demonitor(State#fsm.client, [flush]),
+   client_demonitor(Client),
    pq_pool:release(State#fsm.pool, self()),
    _ = free_worker(State#fsm.pid),
    {next_state, idle, State#fsm{pid=undefined}};
    
-inuse({release, _}, State) ->
-   _ = erlang:demonitor(State#fsm.client, [flush]),
+inuse({release, _}, #fsm{client = Client} = State) ->
+   client_demonitor(Client),
    pq_pool:release(State#fsm.pool, self()),
    {next_state, idle, State}.
 
 %%
 %%
-expired({release, _}, State) ->
-   ?DEBUG("pq [uow]: ~p free worker ~p~n", [State#fsm.pool, State#fsm.pid]),      
-   _ = erlang:demonitor(State#fsm.client, [flush]),
+expired({release, _}, #fsm{client = Client} = State) ->
+   ?DEBUG("pq [uow]: ~p free worker ~p~n", [State#fsm.pool, State#fsm.pid]),
+   client_demonitor(Client),    
    pq_pool:release(State#fsm.pool, self()),
    _ = free_worker(State#fsm.pid),
    {next_state, idle, State#fsm{pid=undefined}};
@@ -252,6 +252,22 @@ free_worker(Pid) ->
       end
    end.
 
+%%
+%%
+client_monitor(Pid, Opts) ->
+   case lists:member(async, Opts) of
+      false ->
+         erlang:monitor(process, Pid);
+      true  ->
+         undefined
+   end.
+
+%%
+%%
+client_demonitor(undefined) ->
+   ok;
+client_demonitor(Ref) ->
+   erlang:demonitor(Ref, [flush]).   
 
 
 

@@ -22,4 +22,4 @@ do(Pool) ->
 %%
 %%
 fail(Pool) ->
-   ?_assertMatch({'EXIT', fail}, spawnable:do(Pool, fun() -> exit(fail) end)).
+   ?_assertMatch({'EXIT', _}, catch spawnable:do(Pool, fun() -> exit(fail) end)).

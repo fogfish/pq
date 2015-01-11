@@ -36,7 +36,7 @@
   ,code_change/4
    % api
   ,close/1
-  ,lease/1
+  ,lease/2
   ,release/2
   ,suspend/1
   ,resume/1
@@ -107,8 +107,8 @@ close(Pool) ->
 
 %%
 %% 
-lease(Pool) ->
-   gen_fsm:sync_send_event(Pool, lease, infinity).
+lease(Pool, Opts) ->
+   gen_fsm:sync_send_event(Pool, {lease, Opts}, infinity).
 
 %%
 %%
@@ -143,14 +143,14 @@ ioctl(Pool, Req) ->
 
 %%
 %%
-active(lease, _Tx, #pool{wq=?NULL}=State) ->
+active({lease, _}, _Tx, #pool{wq=?NULL}=State) ->
    {reply, {error, ebusy}, active, State};
 
-active(lease, Tx, State) ->
+active({lease, Opts}, Tx, State) ->
    %% lease UoW process and bind it with client
    ?DEBUG("pq [pool]: ~p lease ~p~n", [self(), Tx]),   
    {Pid, Queue} = q:deq(State#pool.wq),
-   pq_uow:lease(Pid, Tx),
+   pq_uow:lease(Pid, Tx, Opts),
    {next_state, active, State#pool{wq=Queue}};
 
 active(Msg, Tx, State) ->
@@ -185,7 +185,7 @@ active(Msg, State) ->
 
 %%
 %%
-inactive(lease, _Tx, State) ->
+inactive({lease, _}, _Tx, State) ->
    {reply, {error, ebusy}, inactive, State};
 
 inactive(Msg, Tx, State) ->

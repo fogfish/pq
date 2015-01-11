@@ -32,6 +32,7 @@
   ,pid/1
   ,worker/1
   ,lease/1 
+  ,lease/2 
   ,release/1
   ,suspend/1 
   ,resume/1
@@ -90,9 +91,13 @@ worker(Pq) ->
 %%
 %% lease worker
 -spec(lease/1  :: (pq()) -> {ok, pid()} | {error, any()}).
+-spec(lease/2  :: (pq(), [atom()]) -> {ok, pid()} | {error, any()}).
 
 lease(Pq) ->
-   pq_pool:lease(Pq).
+   pq_pool:lease(Pq,   []).
+
+lease(Pq, Opts) ->
+   pq_pool:lease(Pq, Opts).
 
 %%
 %% release worker

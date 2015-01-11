@@ -58,7 +58,7 @@ do_(Pq, Fun) ->
    do_(Pq, Fun, false).
 
 do_(Pq, Fun, Flag) ->
-   case pq:lease(Pq) of
+   case pq:lease(Pq, [async]) of
       {error, ebusy} ->
          erlang:yield(),
          do_(Pq, Fun, Flag);

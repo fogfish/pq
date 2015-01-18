@@ -254,10 +254,15 @@ free_worker(Pid) ->
 
 %%
 %%
-client_monitor(Pid, Opts) ->
+client_monitor(Pid0, Opts) ->
    case lists:member(async, Opts) of
       false ->
-         erlang:monitor(process, Pid);
+         case lists:keyfind(tenant, 1, Opts) of
+            false     ->
+               erlang:monitor(process, Pid0);
+            {_, Pid1} ->
+               erlang:monitor(process, Pid1)
+         end;
       true  ->
          undefined
    end.

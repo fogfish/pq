@@ -90,6 +90,9 @@ worker(Pq) ->
 
 %%
 %% lease worker
+%%  Options
+%%   * async - use lease in asynchronous manner, do not monitor client
+%%   * {tenant, pid()} - tenant process to monitor
 -spec(lease/1  :: (pq()) -> {ok, pid()} | {error, any()}).
 -spec(lease/2  :: (pq(), [atom()]) -> {ok, pid()} | {error, any()}).
 

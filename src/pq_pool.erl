@@ -45,11 +45,11 @@
 ]).
 
 -record(pool, {
-   wq     = ?NULL     :: datum:q()  % queue of worker processes
-  ,size   = 10        :: integer()  % worker queue size (max number of workers)
-  ,type   = reusable  :: disposable | reusable
-  ,worker = undefined :: any()      % worker specification
-  ,ttl    = infinity  :: integer()
+   wq     = ?NULL       :: datum:q()  % queue of worker processes
+  ,size   = 10          :: integer()  % worker queue size (max number of workers)
+  ,type   = reusable    :: disposable | reusable
+  ,worker = undefined   :: any()      % worker specification
+  ,ttl    = ?CONFIG_TTL :: integer()
 }).
 
 %%%------------------------------------------------------------------
@@ -216,8 +216,8 @@ inactive(Msg, State) ->
 
 %%
 %%
-handle_info({'EXIT', Old, Reason}, active, State) ->
-   ?DEBUG("pq [pool]: ~p death of ~p due ~p~n", [self(), Old, Reason]),   
+handle_info({'EXIT', _Old, _Reason}, active, State) ->
+   ?DEBUG("pq [pool]: ~p death of ~p due ~p~n", [self(), _Old, _Reason]),   
    {ok, Pid} = pq_uow:start_link(self(), State#pool.type, State#pool.ttl, State#pool.worker),
    {next_state, active,  
       State#pool{
@@ -225,8 +225,8 @@ handle_info({'EXIT', Old, Reason}, active, State) ->
       }
    };
 
-handle_info({'EXIT', Old, Reason}, inactive, State) ->
-   ?DEBUG("pq [pool]: ~p death of ~p due ~p~n", [self(), Old, Reason]),   
+handle_info({'EXIT', _Old, _Reason}, inactive, State) ->
+   ?DEBUG("pq [pool]: ~p death of ~p due ~p~n", [self(), _Old, _Reason]),   
    {next_state, inactive, State};
 
 handle_info(_Msg, Sid, State) ->

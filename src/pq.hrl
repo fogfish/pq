@@ -21,6 +21,10 @@
 -endif.
 
 %%
+%% default time-to-live
+-define(CONFIG_TTL,   120000).
+
+%%
 %%
 -record(pq, {
    uow = undefined :: pid() %% unit of work

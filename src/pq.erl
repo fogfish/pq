@@ -55,7 +55,7 @@ start() ->
 %%   {worker,    atom() | {atom(), list()}} - worker specification
 %%   {type,      disposable | reusable} - worker type
 %%   {capacity,  integer()} - max number of workers
-%%   {ttl,       integer()} - worker process time to live (default infinity)
+%%   {ttl,       integer()} - worker process time to live, enables process rotation (default 120.000 ms)
 -spec(start_link/1 :: (list()) -> {ok, pid()} | {error, any()}).
 -spec(start_link/2 :: (atom(), list()) -> {ok, pid()} | {error, any()}).
 

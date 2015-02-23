@@ -164,12 +164,12 @@ handle_info({'DOWN', _Ref, _Type, _Pid, _Reason}, inuse, State) ->
    pq_pool:release(State#fsm.pool, self()),
    {next_state, idle, State#fsm{client=undefined, pid=undefined}};
 
-handle_info({'EXIT', Pid, Reason}, idle, State) ->
-   ?DEBUG("pq [uow]: ~p death of worker ~p due ~p~n", [State#fsm.pool, Pid, Reason]),      
+handle_info({'EXIT', _Pid, _Reason}, idle, State) ->
+   ?DEBUG("pq [uow]: ~p death of worker ~p due ~p~n", [State#fsm.pool, _Pid, _Reason]),      
    {next_state, idle, State#fsm{pid=undefined}};
 
-handle_info({'EXIT', Pid, Reason}, inuse, State) ->
-   ?DEBUG("pq [uow]: ~p death of worker ~p due ~p~n", [State#fsm.pool, Pid, Reason]),      
+handle_info({'EXIT', _Pid, _Reason}, inuse, State) ->
+   ?DEBUG("pq [uow]: ~p death of worker ~p due ~p~n", [State#fsm.pool, _Pid, _Reason]),      
    pq_pool:release(State#fsm.pool, self()),
    {next_state, idle, State#fsm{pid=undefined}};
 

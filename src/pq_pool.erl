@@ -45,11 +45,12 @@
 ]).
 
 -record(pool, {
-   wq     = ?NULL       :: datum:q()  % queue of worker processes
-  ,size   = 10          :: integer()  % worker queue size (max number of workers)
-  ,type   = reusable    :: disposable | reusable
-  ,worker = undefined   :: any()      % worker specification
-  ,ttl    = ?CONFIG_TTL :: integer()
+   wq       = ?NULL       :: datum:q()  % queue of worker processes
+  ,size     = 0           :: integer()  % worker queue size
+  ,capacity = 10          :: integer()  % worker queue capacity
+  ,type     = reusable    :: disposable | reusable
+  ,worker   = undefined   :: any()      % worker specification
+  ,ttl      = ?CONFIG_TTL :: integer()
 }).
 
 %%%------------------------------------------------------------------
@@ -70,7 +71,7 @@ init([Opts]) ->
    {ok, inactive, init(Opts, #pool{})}.
 
 init([{capacity, X} | Opts], State) ->
-   init(Opts, State#pool{size=X});
+   init(Opts, State#pool{capacity=X});
 
 init([{type, X} | Opts], State) ->
    init(Opts, State#pool{type=X});
@@ -143,8 +144,13 @@ ioctl(Pool, Req) ->
 
 %%
 %%
-active({lease, _}, _Tx, #pool{wq=?NULL}=State) ->
+active({lease, _}, _Tx, #pool{wq=?NULL, size=Size, capacity=Capacity}=State)
+ when Size =:= Capacity ->
    {reply, {error, ebusy}, active, State};
+
+active({lease, _}=Req, Tx, #pool{wq=?NULL, size=Size, type=Type, ttl=TTL, worker=Worker}=State) ->
+   {ok, Pid} = pq_uow:start_link(self(), Type, TTL, Worker),
+   active(Req, Tx, State#pool{wq=q:enq(Pid, ?NULL), size=Size + 1});
 
 active({lease, Opts}, Tx, State) ->
    %% lease UoW process and bind it with client
@@ -206,7 +212,7 @@ inactive(resume, State) ->
    ?DEBUG("pq [pool]: ~p resume~n", [self()]),   
    {next_state, active,
       State#pool{
-         wq = init_pool(State#pool.size, State#pool.type, State#pool.ttl, State#pool.worker, q:new())
+         wq = init_pool(0, State#pool.type, State#pool.ttl, State#pool.worker, q:new())
       }
    };
 

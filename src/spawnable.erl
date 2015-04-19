@@ -51,17 +51,16 @@ do(Pq, Fun, Timeout) ->
 
 %%
 %% asynchronously evaluate functional object
--spec(do_/2 :: (pid(), function()) -> ok).
--spec(do_/3 :: (pid(), function(), boolean()) -> ok).
+-spec(do_/2 :: (pid(), function()) -> ok | {error, any()}).
+-spec(do_/3 :: (pid(), function(), boolean()) -> ok | {error, any()}).
 
 do_(Pq, Fun) ->
    do_(Pq, Fun, false).
 
 do_(Pq, Fun, Flag) ->
    case pq:lease(Pq, [async]) of
-      {error, ebusy} ->
-         erlang:yield(),
-         do_(Pq, Fun, Flag);
+      {error, _} = Error ->
+         Error;
       Ref ->
          case Flag of
             false ->

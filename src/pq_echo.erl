@@ -17,26 +17,49 @@
 %% @description
 %%   echo example worker
 -module(pq_echo).
+-behaviour(gen_server).
 
 -export([
-   start_link/0, 
-   init/1
+   start_link/0
+  ,init/1
+  ,terminate/2
+  ,handle_call/3
+  ,handle_cast/2
+  ,handle_info/2
+  ,code_change/3
 ]).
 
+%%
+%% internal state
+-record(srv, {}).
+
 start_link() ->
-    proc_lib:start_link(?MODULE, init, [self()]).
+   gen_server:start_link(?MODULE, [], []).
 
-init(Parent) ->
-   proc_lib:init_ack(Parent, {ok, self()}),
-   loop().
+init([]) ->
+   {ok, #srv{}}.
 
-loop() ->
-   receive
-      {Pid, exit} ->
-         Pid ! exit;
-      {Pid,  Msg} ->
-         Pid ! Msg,
-         loop()
-   end.
+terminate(_, _State) ->
+   ok.
+
+%%
+%%
+handle_call(Req, _Tx, State) ->
+   {reply, Req, State}.
+
+%%
+%%
+handle_cast(_, State) ->
+   {noreply, State}.
+
+%%
+%%
+handle_info(_, State) ->
+   {noreply, State}.
+
+%%
+%%
+code_change(_OldVsn, State, _Extra) ->
+   {ok, State}.
 
 

@@ -22,7 +22,7 @@
 -include("pq.hrl").
 
 -export([
-   start_link/4
+   start_link/5
    % gen_fsm
   ,init/1
   ,terminate/3
@@ -41,12 +41,13 @@
 
 %% internal state
 -record(fsm, {
-   pool   = undefined :: pid()       %% pool process
-  ,client = undefined :: reference() %% client reference
-  ,type   = undefined :: atom()      %% worker re-use strategy
-  ,worker = undefined :: any()       %% worker process specification
-  ,ttl    = undefined :: any()       %% worker process timeout
-  ,pid    = undefined :: pid()       %% worker process instance
+   pool     = undefined :: pid()       %% pool process
+  ,client   = undefined :: reference() %% client reference
+  ,type     = undefined :: atom()      %% worker re-use strategy
+  ,protocol = undefined :: atom()      %% worker ipc protocol
+  ,worker   = undefined :: any()       %% worker process specification
+  ,ttl      = undefined :: any()       %% worker process timeout
+  ,pid      = undefined :: pid()       %% worker process instance
 }).
 
 %%%------------------------------------------------------------------
@@ -55,17 +56,18 @@
 %%%
 %%%------------------------------------------------------------------
 
-start_link(Pool, Type, TTL, Worker) ->
-   gen_fsm:start_link(?MODULE, [Pool, Type, TTL, Worker], []).
+start_link(Pool, Type, Prot, TTL, Worker) ->
+   gen_fsm:start_link(?MODULE, [Pool, Type, Prot, TTL, Worker], []).
 
-init([Pool, Type, TTL, Worker]) ->
+init([Pool, Type, Prot, TTL, Worker]) ->
    erlang:process_flag(trap_exit, true),
    {ok, idle,
       #fsm{
-         pool   = Pool
-        ,type   = Type
-        ,ttl    = TTL
-        ,worker = Worker
+         pool     = Pool
+        ,type     = Type
+        ,protocol = Prot
+        ,ttl      = TTL
+        ,worker   = Worker
       }
    }.
 
@@ -86,8 +88,8 @@ close(Pid) ->
 
 %%
 %%
-lease(Pid, Tx, Opts) ->
-   gen_fsm:send_event(Pid, {lease, Tx, Opts}).
+lease(Pid, Tx, Req) ->
+   gen_fsm:send_event(Pid, {lease, Tx, Req}).
 
 %%
 %%
@@ -114,7 +116,7 @@ idle({lease, Tx, _}=Req, #fsm{pid=undefined}=State) ->
          {next_state, idle, State}
    end;
 
-idle({lease, {Pid, _}=Tx, Opts}, State) ->
+idle({lease, {Pid, _}=Tx, {lease, Opts}}, State) ->
    Ref = client_monitor(Pid, Opts),
    gen_server:reply(Tx, #pq{uow=self(), pid=State#fsm.pid}),
    {next_state, inuse, 
@@ -122,6 +124,17 @@ idle({lease, {Pid, _}=Tx, Opts}, State) ->
          client = Ref
       }
    };
+
+idle({lease, Tx, {call, Req, Timeout}}, #fsm{type=disposable, pid=Pid}=State) ->
+   (catch gen_server:reply(Tx, gen_server:call(Pid, Req, Timeout))),
+   pq_pool:release(State#fsm.pool, self()),
+   _ = free_worker(State#fsm.pid),
+   {next_state, idle, State#fsm{pid=undefined}};
+
+idle({lease, Tx, {call, Req, Timeout}}, #fsm{pid=Pid}=State) ->
+   (catch gen_server:reply(Tx, gen_server:call(Pid, Req, Timeout))),
+   pq_pool:release(State#fsm.pool, self()),
+   {next_state, idle, State};
 
 idle({release, _}, State) ->
    {next_state, idle, State}.

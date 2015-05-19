@@ -42,6 +42,8 @@
   ,resume/1
   ,worker/1
   ,ioctl/2
+  ,call/3
+  ,cast/2
 ]).
 
 -record(pool, {
@@ -49,6 +51,7 @@
   ,size     = 0           :: integer()  % worker queue size
   ,capacity = 10          :: integer()  % worker queue capacity
   ,type     = reusable    :: disposable | reusable
+  ,protocol = undefined   :: any()      % worker ipc protocol
   ,worker   = undefined   :: any()      % worker specification
   ,ttl      = ?CONFIG_TTL :: integer()
 }).
@@ -76,11 +79,15 @@ init([{capacity, X} | Opts], State) ->
 init([{type, X} | Opts], State) ->
    init(Opts, State#pool{type=X});
 
+init([{protocol, X} | Opts], State) ->
+   init(Opts, State#pool{protocol=X});
+
 init([{worker, X} | Opts], State) ->
    init(Opts, State#pool{worker=X});
 
 init([{ttl, X} | Opts], State) ->
    init(Opts, State#pool{ttl=X});
+
 
 init([_ | Opts], State) ->
    init(Opts, State);
@@ -128,6 +135,16 @@ resume(Pool) ->
 
 %%
 %%
+call(Pool, Req, Timeout) ->
+   gen_fsm:sync_send_event(Pool, {call, Req, Timeout}, Timeout).
+
+%%
+%%
+cast(Pool, Req) ->
+   gen_fsm:sync_send_event(Pool, {cast, Req}).
+
+%%
+%%
 worker(Pool) ->
    gen_fsm:sync_send_all_state_event(Pool, worker, infinity).
 
@@ -144,24 +161,20 @@ ioctl(Pool, Req) ->
 
 %%
 %%
-active({lease, _}, _Tx, #pool{wq=?NULL, size=Size, capacity=Capacity}=State)
+active(_Req, _Tx, #pool{wq=?NULL, size=Size, capacity=Capacity}=State)
  when Size =:= Capacity ->
    {reply, {error, ebusy}, active, State};
 
-active({lease, _}=Req, Tx, #pool{wq=?NULL, size=Size, type=Type, ttl=TTL, worker=Worker}=State) ->
-   {ok, Pid} = pq_uow:start_link(self(), Type, TTL, Worker),
+active(Req, Tx, #pool{wq=?NULL, size=Size, type=Type, protocol=Prot, ttl=TTL, worker=Worker}=State) ->
+   {ok, Pid} = pq_uow:start_link(self(), Type, Prot, TTL, Worker),
    active(Req, Tx, State#pool{wq=q:enq(Pid, ?NULL), size=Size + 1});
 
-active({lease, Opts}, Tx, State) ->
+active(Req, Tx, State) ->
    %% lease UoW process and bind it with client
    ?DEBUG("pq [pool]: ~p lease ~p~n", [self(), Tx]),   
    {Pid, Queue} = q:deq(State#pool.wq),
-   pq_uow:lease(Pid, Tx, Opts),
-   {next_state, active, State#pool{wq=Queue}};
-
-active(Msg, Tx, State) ->
-   ?WARNING("pq [pool]: unexpected message ~p from ~p~n", [Msg, Tx]),
-   {next_state, active, State}.
+   pq_uow:lease(Pid, Tx, Req),
+   {next_state, active, State#pool{wq=Queue}}.
 
 %%
 %%
@@ -191,12 +204,8 @@ active(Msg, State) ->
 
 %%
 %%
-inactive({lease, _}, _Tx, State) ->
-   {reply, {error, ebusy}, inactive, State};
-
-inactive(Msg, Tx, State) ->
-   ?WARNING("pq [pool]: unexpected message ~p from ~p~n", [Msg, Tx]),
-   {next_state, inactive, State}.
+inactive(_Req, _Tx, State) ->
+   {reply, {error, ebusy}, inactive, State}.
 
 %%
 %%
@@ -212,7 +221,7 @@ inactive(resume, State) ->
    ?DEBUG("pq [pool]: ~p resume~n", [self()]),   
    {next_state, active,
       State#pool{
-         wq = init_pool(0, State#pool.type, State#pool.ttl, State#pool.worker, q:new())
+         wq = init_pool(0, State#pool.type, State#pool.protocol, State#pool.ttl, State#pool.worker, q:new())
       }
    };
 
@@ -224,7 +233,7 @@ inactive(Msg, State) ->
 %%
 handle_info({'EXIT', _Old, _Reason}, active, State) ->
    ?DEBUG("pq [pool]: ~p death of ~p due ~p~n", [self(), _Old, _Reason]),   
-   {ok, Pid} = pq_uow:start_link(self(), State#pool.type, State#pool.ttl, State#pool.worker),
+   {ok, Pid} = pq_uow:start_link(self(), State#pool.type, State#pool.protocol, State#pool.ttl, State#pool.worker),
    {next_state, active,  
       State#pool{
          wq = q:enq(Pid, State#pool.wq)
@@ -276,11 +285,11 @@ code_change(_OldVsn, Sid, State, _Extra) ->
 
 %%
 %% initialize pool of UoW processes
-init_pool(0, _Type, _TTL, _Worker, Queue) ->
+init_pool(0, _Type, _Prot, _TTL, _Worker, Queue) ->
    Queue;
-init_pool(N,  Type,  TTL,  Worker, Queue) ->
-   {ok, Pid} = pq_uow:start_link(self(), Type, TTL, Worker),
-   init_pool(N - 1, Type, TTL, Worker, q:enq(Pid, Queue)).
+init_pool(N,  Type,  Prot, TTL,  Worker, Queue) ->
+   {ok, Pid} = pq_uow:start_link(self(), Type, Prot, TTL, Worker),
+   init_pool(N - 1, Type, Prot, TTL, Worker, q:enq(Pid, Queue)).
 
 %%
 %% terminate pool of UoW processes

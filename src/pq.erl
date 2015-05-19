@@ -37,6 +37,7 @@
   ,suspend/1 
   ,resume/1
   ,ioctl/2
+  ,call/3
 ]).
 
 %%
@@ -137,5 +138,8 @@ resume(Pq) ->
 ioctl(Pq, Req) ->
    pq_pool:ioctl(Pq, Req).
 
+
+call(Pool, Req, Timeout) ->
+   pq_pool:call(Pool, Req, Timeout).
 
 

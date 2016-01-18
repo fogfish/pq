@@ -35,7 +35,7 @@ new(_Id) ->
 %%
 %%
 run(request, _KeyGen, _ValGen, State) ->
-   case pq:lease(benq) of
+   case pq:lease({benq, 'a@127.0.0.1'}) of
       {error, ebusy} ->
          {error, ebusy, State};
       Ref ->
@@ -56,7 +56,12 @@ run(crash, _KeyGen, _ValGen, State) ->
 
 run(do, KeyGen, ValGen, State) ->
    spawnable:do_(benq, fun() -> {KeyGen(), ValGen()} end),
+   {ok, State};
+
+run(call, _KeyGen, _ValGen, State) ->
+   ping = pq:call({benq, 'a@127.0.0.1'}, ping, 5000),
    {ok, State}.
+
 
 
 %%%----------------------------------------------------------------------------   
@@ -86,7 +91,4 @@ init(Type) ->
 %%
 %%
 ping(Pid, Msg) ->
-   Pid ! {self(), Msg},
-   receive
-      Msg -> ok
-   end.
+   Msg = gen_server:call(Pid, Msg).

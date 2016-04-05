@@ -14,25 +14,17 @@
 %%   See the License for the specific language governing permissions and
 %%   limitations under the License.
 %%
-% -define(VERBOSE, true).
-
--ifndef(NULL).
--define(NULL, {}).
--endif.
-
-%%
-%% default time-to-live
--define(CONFIG_TTL,   120000).
 
 %%
 %%
 -record(pq, {
-   uow = undefined :: pid() %% unit of work
-  ,pid = undefined :: pid() %% worker process
+   pool = undefined :: pid() %% unit of work
+  ,pid  = undefined :: pid() %% worker process
 }).
 
-
--ifdef(VERBOSE).
+%%
+%% error logging macro
+-ifdef(CONFIG_DEBUG).
 -define(DEBUG(Str, Args), error_logger:error_msg(Str, Args)).
 -else.
 -define(DEBUG(Str, Args), ok).

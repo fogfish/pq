@@ -25,12 +25,11 @@
 new(_Id) ->
    try
       lager:set_loglevel(lager_console_backend, basho_bench_config:get(log_level, info)),
-      init()
+      {ok, init()}
    catch _:Err ->
       lager:error("pq failed: ~p", [Err]),
       halt(1)
-   end,
-   {ok, q:new()}.
+   end.
 
 %%
 %%
@@ -38,7 +37,7 @@ run(request, _KeyGen, _ValGen, State) ->
    case pq:lease(benq) of
       {error, ebusy} ->
          {error, ebusy, State};
-      Ref ->
+      {ok, Ref} ->
          _ = ping(pq:pid(Ref), ping),
          pq:release(Ref),
          {ok, State}
@@ -48,16 +47,11 @@ run(crash, _KeyGen, _ValGen, State) ->
    case pq:lease(benq) of
       {error, ebusy} ->
          {error, ebusy, State};
-      Ref ->
+      {ok, Ref} ->
          _ = ping(pq:pid(Ref), exit),
          pq:release(Ref),
          {ok, State}
-   end;
-
-run(do, KeyGen, ValGen, State) ->
-   spawnable:do_(benq, fun() -> {KeyGen(), ValGen()} end),
-   {ok, State}.
-
+   end.
 
 %%%----------------------------------------------------------------------------   
 %%%
@@ -68,20 +62,13 @@ run(do, KeyGen, ValGen, State) ->
 %%
 %%
 init() ->
-   case application:start(pq) of
-      {error, {already_started, _}} ->
-         ok;
-      ok ->
-         init(basho_bench_config:get(pq_type, disposable))
-   end.
-
-init(spawnable) ->
+   application:start(pq),
    Capacity = basho_bench_config:get(pq_capacity, 10),
-   spawnable:start_link(benq, Capacity);
+   pq:start_link(benq, [
+      {capacity, Capacity}, 
+      {worker,   {pq_echo, []}}
+   ]).
 
-init(Type) ->
-   Capacity = basho_bench_config:get(pq_capacity, 10),
-   pq:start_link(benq, [{type, Type}, {capacity, Capacity}, {worker, pq_echo}]).
 
 %%
 %%

@@ -16,32 +16,31 @@
 %%
 %% @description
 %%   pq library is process queue aka worker pool library.
-%%   It supports strategies
-%%      (N)-disposable queue maintain N disposable workers
-%%      (N)-reusable   queue maintain N reusable workers
-%%
 -module(pq).
 
 -include("pq.hrl").
 
 -export([
    start/0
-  ,start_link/1 
   ,start_link/2 
-  ,close/1
-  ,pid/1
-  ,worker/1
+  ,free/1
+]).
+-export([
+   pid/1
   ,lease/1 
-  ,lease/2 
   ,release/1
-  ,suspend/1 
-  ,resume/1
-  ,ioctl/2
+]).
+-export([
+   call/2
+  ,call/3
+  ,cast/2
+  ,send/2
 ]).
 
 %%
--type(pq()    :: atom() | pid()).
--type(token() :: any()).
+%% data types
+-type pq() :: #pq{}.
+
 
 %%
 %% start application
@@ -52,90 +51,77 @@ start() ->
 %% start pool of processes
 %%
 %% Options:
-%%   {worker,    atom() | {atom(), list()}} - worker specification
-%%   {type,      disposable | reusable} - worker type
+%%   {worker,    {atom(), list()}} - worker specification
+%%   {strategy,  lifo | fifo} - worker re-use strategy
 %%   {capacity,  integer()} - max number of workers
-%%   {ttl,       integer()} - worker process time to live, enables process rotation (default 120.000 ms)
--spec(start_link/1 :: (list()) -> {ok, pid()} | {error, any()}).
 -spec(start_link/2 :: (atom(), list()) -> {ok, pid()} | {error, any()}).
 
-start_link(Opts) ->
-   pq_pool:start_link(Opts).
-
 start_link(Name, Opts) ->
-   pq_pool:start_link(Name, Opts).
+   pq_pool_sup:start_link(Name, Opts).
+
 
 %%
 %% close pool and terminate all workers
--spec(close/1 :: (pq()) -> ok).
+-spec(free/1 :: (pid()) -> ok).
 
-close(Pq) ->
-   pq_pool:close(Pq).
+free(Pq) ->
+   erlang:exit(Pq, shutdown).
+
 
 %%
 %% return pid of worker process
--spec(pid/1 :: (token()) -> pid()).
+-spec(pid/1 :: (pq()) -> pid()).
 
 pid(#pq{pid=Pid}) ->
    Pid;
 pid({error, Reason}) ->
    exit(Reason).
 
-%%
-%% return worker specification
--spec(worker/1 :: (pq()) -> any()).
-
-worker(Pq) ->
-   pq_pool:worker(Pq).
 
 %%
 %% lease worker
-%%  Options
-%%   * async - use lease in asynchronous manner, do not monitor client
-%%   * {tenant, pid()} - tenant process to monitor
--spec(lease/1  :: (pq()) -> {ok, pid()} | {error, any()}).
--spec(lease/2  :: (pq(), [atom()]) -> {ok, pid()} | {error, any()}).
+-spec(lease/1  :: (atom()) -> {ok, pq()} | {error, any()}).
 
 lease(Pq) ->
-   pq_pool:lease(Pq,   []).
+   pipe:call(Pq, lease, infinity).
 
-lease(Pq, Opts) ->
-   pq_pool:lease(Pq, Opts).
 
 %%
 %% release worker
--spec(release/1 :: (token()) -> ok).
+-spec(release/1 :: (pq()) -> ok).
 
-release(#pq{}=Tx) ->
-   pq_uow:release(Tx);
+release(#pq{pool=Pool, pid=Pid}) ->
+   pipe:send(Pool, {release, Pid});
 release({error, Reason}) ->
    exit(Reason);
 release(undefined) ->
    ok.
 
-%%
-%% suspend queue and terminate all workers
--spec(suspend/1 :: (pq()) -> ok).
-
-suspend(Pq) ->
-   pq_pool:suspend(Pq).
 
 %%
-%% resume queues, enables lease requests and re-spawn workers
--spec(resume/1 :: (pq()) -> ok).
+%% synchronously call worker
+-spec(call/2 :: (atom(), _) -> _).
+-spec(call/3 :: (atom(), _, timeout()) -> _).
 
-resume(Pq) ->
-   pq_pool:resume(Pq).
+call(Pq, Req) ->
+   call(Pq, Req, 5000).
+
+call(Pq, Req, Timeout) ->
+   pipe:call(Pq, {forward, Req}, Timeout).
+
 
 %%
-%% return property of process queue
-%%   * capacity  - return total queue capacity
-%%   * busy      - return number of occupied workers
-%%   * free      - return number of free workers
--spec(ioctl/2 :: (pq(), atom()) -> any()).
+%% asynchronous worker call 
+-spec(cast/2 :: (atom(), _) -> reference()).
 
-ioctl(Pq, Req) ->
-   pq_pool:ioctl(Pq, Req).
+cast(Pq, Req) ->
+   pipe:cast(Pq, {forward, Req}).
 
+%%
+%% asynchronous send (fire-and-forget)
+-spec(send/2 :: (atom(), _) -> ok).
 
+send(Pq, Req) ->
+   pipe:send(Pq, {forward, Req}), 
+   ok.
 

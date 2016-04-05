@@ -6,9 +6,7 @@
 *.tag.gz
 *.tgz
 deps.config
-ebin/
-deps/
-.eunit/
-rebar
+_build/
+rebar*
 *.sublime-*
 tests/

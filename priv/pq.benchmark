@@ -1,7 +1,6 @@
 {code_paths, [
-   "./ebin"
-  ,"./deps/datum"
-  ,"./deps/eep"
+   "_build/default/lib/pq/ebin"
+  ,"_build/default/lib/pipe/ebin"
 ]}.
 {log_level,    info}.
 {report_interval, 1}.
@@ -11,17 +10,12 @@
 %%
 %% workload
 {mode,            max}.
-{duration,          5}.
-% {concurrent,       10}.
-{concurrent,      300}.
+{duration,          1}.
+{concurrent,       10}.
 
 {operations, [
-  % {request,  100}
+  {request,  100}
   % ,{crash,     10}
-  {do, 100}
 ]}.
 
-% {pq_type,  disposable}. % worker use pattern
-% {pq_type,     reusable}. % worker use pattern
-{pq_type,    spawnable}. % worker use pattern
 {pq_capacity,      1000}. % length of queue

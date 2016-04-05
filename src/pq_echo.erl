@@ -19,24 +19,33 @@
 -module(pq_echo).
 
 -export([
-   start_link/0, 
-   init/1
+   start_link/1, 
+   init/2
 ]).
 
-start_link() ->
-    proc_lib:start_link(?MODULE, init, [self()]).
+start_link(Pq) ->
+    proc_lib:start_link(?MODULE, init, [self(), Pq]).
 
-init(Parent) ->
+init(Parent, Pq) ->
    proc_lib:init_ack(Parent, {ok, self()}),
-   loop().
+   loop(Pq).
 
-loop() ->
+loop(Pq) ->
    receive
+      %%
       {Pid, exit} ->
          Pid ! exit;
+
+      %%
       {Pid,  Msg} ->
          Pid ! Msg,
-         loop()
+         loop(Pq);
+
+      %%
+      {'$pipe', Pipe, Msg} ->
+         pipe:ack(Pipe, Msg),
+         pipe:send(Pq, {release, self()}),
+         loop(Pq)
    end.
 
 

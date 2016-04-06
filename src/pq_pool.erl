@@ -82,7 +82,7 @@ free(_, _State) ->
 handle(lease, Pipe, State0) ->
    case deq(State0) of
       {{value, Pid}, State1} ->
-         pipe:ack(Pipe, {ok, #pq{pool=self(), pid=Pid}}),
+         pipe:ack(Pipe, {ok, Pid}),
          {next_state, handle, State1};
       {empty, State1} ->
          pipe:ack(Pipe, {error, ebusy}),

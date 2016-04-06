@@ -44,7 +44,7 @@ loop(Pq) ->
       %%
       {'$pipe', Pipe, Msg} ->
          pipe:ack(Pipe, Msg),
-         pipe:send(Pq, {release, self()}),
+         pq:release(Pq, self()),
          loop(Pq)
    end.
 

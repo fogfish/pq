@@ -26,9 +26,8 @@
   ,free/1
 ]).
 -export([
-   pid/1
-  ,lease/1 
-  ,release/1
+   lease/1 
+  ,release/2
 ]).
 -export([
    call/2
@@ -36,10 +35,6 @@
   ,cast/2
   ,send/2
 ]).
-
-%%
-%% data types
--type pq() :: #pq{}.
 
 
 %%
@@ -67,20 +62,9 @@ start_link(Name, Opts) ->
 free(Pq) ->
    erlang:exit(Pq, shutdown).
 
-
-%%
-%% return pid of worker process
--spec(pid/1 :: (pq()) -> pid()).
-
-pid(#pq{pid=Pid}) ->
-   Pid;
-pid({error, Reason}) ->
-   exit(Reason).
-
-
 %%
 %% lease worker
--spec(lease/1  :: (atom()) -> {ok, pq()} | {error, any()}).
+-spec(lease/1  :: (atom()) -> {ok, pid()} | {error, any()}).
 
 lease(Pq) ->
    pipe:call(Pq, lease, infinity).
@@ -88,13 +72,10 @@ lease(Pq) ->
 
 %%
 %% release worker
--spec(release/1 :: (pq()) -> ok).
+-spec(release/2 :: (atom(), pid()) -> ok).
 
-release(#pq{pool=Pool, pid=Pid}) ->
-   pipe:send(Pool, {release, Pid});
-release({error, Reason}) ->
-   exit(Reason);
-release(undefined) ->
+release(Pq, Pid) ->
+   pipe:send(Pq, {release, Pid}),
    ok.
 
 

@@ -16,13 +16,6 @@
 %%
 
 %%
-%%
--record(pq, {
-   pool = undefined :: pid() %% unit of work
-  ,pid  = undefined :: pid() %% worker process
-}).
-
-%%
 %% error logging macro
 -ifdef(CONFIG_DEBUG).
 -define(DEBUG(Str, Args), error_logger:error_msg(Str, Args)).

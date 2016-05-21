@@ -142,9 +142,15 @@ new(#pool{size = Size, capacity = Capacity} = State)
    {empty, State};
 
 new(#pool{sup = Sup, size = Size, worker = Worker} = State) ->
-   {ok, Pid} = supervisor:start_child(Sup, [self() | Worker]),
-   erlang:link(Pid),
-   {{value, Pid}, State#pool{size = Size + 1}}.
+   case supervisor:start_child(Sup, [self() | Worker]) of
+      % worker is created successfully
+      {ok, Pid} ->
+         erlang:link(Pid),
+         {{value, Pid}, State#pool{size = Size + 1}};
+      % unable to create worker
+      _ ->
+         {empty, State}
+   end.
 
 %%
 %%

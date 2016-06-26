@@ -119,9 +119,13 @@ handle({'EXIT', Pid, _}, _Pipe, State0) ->
 %%
 deq(#pool{wq = Wq0} = State) ->
    case queue:out(Wq0) of
-      {{value, _} = Value, Wq1} ->
-         {Value, State#pool{wq = Wq1}};
-
+      {{value, Pid} = Value, Wq1} ->
+         case erlang:is_process_alive(Pid) of
+            true  ->
+               {Value, State#pool{wq = Wq1}};
+            false ->
+               deq(State#pool{wq = Wq1})
+         end;
       {empty,  _} ->
          new(State)
    end.

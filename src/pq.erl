@@ -47,7 +47,7 @@ start() ->
 %%
 %% Options:
 %%   {worker,    {atom(), list()}} - worker specification
-%%   {strategy,  lifo | fifo} - worker re-use strategy
+%%   {strategy,  lifo | fifo | spawn} - worker re-use strategy
 %%   {capacity,  integer()} - max number of workers
 -spec(start_link/2 :: (atom(), list()) -> {ok, pid()} | {error, any()}).
 

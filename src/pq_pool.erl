@@ -117,15 +117,13 @@ handle({'EXIT', Pid, _}, _Pipe, State0) ->
 
 %%
 %%
+deq(#pool{strategy = spawn} = State) ->
+   new(State);   
+
 deq(#pool{wq = Wq0} = State) ->
    case queue:out(Wq0) of
-      {{value, Pid} = Value, Wq1} ->
-         case erlang:is_process_alive(Pid) of
-            true  ->
-               {Value, State#pool{wq = Wq1}};
-            false ->
-               deq(State#pool{wq = Wq1})
-         end;
+      {{value, _} = Value, Wq1} ->
+         {Value, State#pool{wq = Wq1}};
       {empty,  _} ->
          new(State)
    end.
@@ -136,7 +134,10 @@ enq(Pid, #pool{strategy = fifo, wq = Wq0} = State) ->
    State#pool{wq = queue:in(Pid, Wq0)};
 
 enq(Pid, #pool{strategy = lifo, wq = Wq0} = State) ->
-   State#pool{wq = queue:in_r(Pid, Wq0)}.
+   State#pool{wq = queue:in_r(Pid, Wq0)};
+
+enq(_,   #pool{strategy = spawn} = State) ->
+   State.
 
 
 %%

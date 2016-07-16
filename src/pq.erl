@@ -49,7 +49,7 @@ start() ->
 %%   {worker,    {atom(), list()}} - worker specification
 %%   {strategy,  lifo | fifo | spawn} - worker re-use strategy
 %%   {capacity,  integer()} - max number of workers
--spec(start_link/2 :: (atom(), list()) -> {ok, pid()} | {error, any()}).
+-spec start_link(atom(), list()) -> {ok, pid()} | {error, any()}.
 
 start_link(Name, Opts) ->
    pq_pool_sup:start_link(Name, Opts).
@@ -57,14 +57,14 @@ start_link(Name, Opts) ->
 
 %%
 %% close pool and terminate all workers
--spec(free/1 :: (pid()) -> ok).
+-spec free(pid()) -> ok.
 
 free(Pq) ->
    erlang:exit(Pq, shutdown).
 
 %%
 %% lease worker
--spec(lease/1  :: (atom()) -> {ok, pid()} | {error, any()}).
+-spec lease(atom()) -> {ok, pid()} | {error, any()}.
 
 lease(Pq) ->
    pipe:call(Pq, lease, infinity).
@@ -72,7 +72,7 @@ lease(Pq) ->
 
 %%
 %% release worker
--spec(release/2 :: (atom(), pid()) -> ok).
+-spec release(atom(), pid()) -> ok.
 
 release(Pq, Pid) ->
    pipe:send(Pq, {release, Pid}),
@@ -81,8 +81,8 @@ release(Pq, Pid) ->
 
 %%
 %% synchronously call worker
--spec(call/2 :: (atom(), _) -> _).
--spec(call/3 :: (atom(), _, timeout()) -> _).
+-spec call(atom(), _) -> _.
+-spec call(atom(), _, timeout()) -> _.
 
 call(Pq, Req) ->
    call(Pq, Req, 5000).
@@ -93,14 +93,14 @@ call(Pq, Req, Timeout) ->
 
 %%
 %% asynchronous worker call 
--spec(cast/2 :: (atom(), _) -> reference()).
+-spec cast(atom(), _) -> reference().
 
 cast(Pq, Req) ->
    pipe:cast(Pq, {forward, Req}).
 
 %%
 %% asynchronous send (fire-and-forget)
--spec(send/2 :: (atom(), _) -> ok).
+-spec send(atom(), _) -> ok.
 
 send(Pq, Req) ->
    pipe:send(Pq, {forward, Req}), 
